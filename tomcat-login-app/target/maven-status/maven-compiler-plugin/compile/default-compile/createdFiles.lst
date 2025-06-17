@@ -1,6 +1,0 @@
-com/example/model/User.class
-com/example/repository/UserRepository.class
-com/example/dao/UserDao.class
-com/example/controller/AuthController.class
-com/example/service/UserService.class
-com/example/TomcatLoginAppApplication.class

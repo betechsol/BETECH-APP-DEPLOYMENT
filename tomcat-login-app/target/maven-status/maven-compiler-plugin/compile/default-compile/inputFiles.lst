@@ -1,6 +1,0 @@
-/home/ubuntu/BETECH-APP-DEPLOYMENT/tomcat-login-app/src/main/java/com/example/controller/AuthController.java
-/home/ubuntu/BETECH-APP-DEPLOYMENT/tomcat-login-app/src/main/java/com/example/service/UserService.java
-/home/ubuntu/BETECH-APP-DEPLOYMENT/tomcat-login-app/src/main/java/com/example/TomcatLoginAppApplication.java
-/home/ubuntu/BETECH-APP-DEPLOYMENT/tomcat-login-app/src/main/java/com/example/model/User.java
-/home/ubuntu/BETECH-APP-DEPLOYMENT/tomcat-login-app/src/main/java/com/example/repository/UserRepository.java
-/home/ubuntu/BETECH-APP-DEPLOYMENT/tomcat-login-app/src/main/java/com/example/dao/UserDao.java
