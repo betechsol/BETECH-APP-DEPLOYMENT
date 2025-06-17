@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  postgres:
+  betechnet-postgres:
     image: postgres:14
     container_name: betechnet-postgres
     environment:
@@ -18,14 +18,14 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
-    build: ./tomcat-login-app
-    container_name: betechnet-backend
+  betechnet-backend:
+    build: ./betech-login-backend
+    container_name: betechnet-login-backend
     depends_on:
-      postgres:
+      betechnet-postgres:
         condition: service_healthy
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/BETECH_DB
+      SPRING_DATASOURCE_URL: jdbc:postgresql://betechnet-postgres:5432/BETECH_DB
       SPRING_DATASOURCE_USERNAME: admin
       SPRING_DATASOURCE_PASSWORD: admmin123
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
@@ -33,11 +33,11 @@ services:
       - "8080:8080"
     restart: unless-stopped
 
-  frontend:
-    build: ./tomcat-login-frontend
-    container_name: betechnet-frontend
+  betechnet-frontend:
+    build: ./betech-login-frontend
+    container_name: betechnet-login-frontend
     depends_on:
-      - backend
+      - betechnet-backend
     ports:
       - "3000:80"
     restart: unless-stopped

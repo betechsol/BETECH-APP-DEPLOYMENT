@@ -1,0 +1,5 @@
+com/betech/model/User.class
+com/betech/repository/UserRepository.class
+com/betech/controller/AuthController.class
+com/betech/service/UserService.class
+com/betech/BetechLoginAppApplication.class
