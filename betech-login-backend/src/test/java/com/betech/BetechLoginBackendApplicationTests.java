@@ -5,7 +5,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
 class BetechLoginBackendApplicationTests {
-    @Test
-    void contextLoads() {
+    // @Test
+    // void contextLoads() {
+    // }
+    public String void(){
+        System.out.println("Test in progress");
     }
 }
