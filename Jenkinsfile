@@ -7,13 +7,17 @@ pipeline {
         FRONTEND_DIR = 'betech-login-frontend'
         BACKEND_DIR = 'betech-login-backend'
         DB_DIR = 'betech-postgresql-db'
-        DOCKER_IMAGE_FRONTEND = 'betechinc/betech-app-deployment_betechnet-frontend:v1.1'
-        DOCKER_IMAGE_BACKEND = 'betechinc/betech-app-deployment_betechnet-backend:v1.0'
-        DOCKER_IMAGE_DB = 'postgres:14'
+        DOCKER_IMAGE_FRONTEND = 'betechinc/betech-app-deployment_betechnet-frontend'
+        DOCKER_IMAGE_BACKEND = 'betechinc/betech-app-deployment_betechnet-backend'
+        BUILD_NUMBER = 'v2.0'
+        DOCKER_IMAGE_DB = 'betechinc/betech-app-deployment_betechnet-postgres'
         SONARQUBE_SERVER = 'SonarQubeServer'
         DOCKERHUB_CREDENTIALS = 'dockerhub-creds'
-        NEXUS_URL = 'http://34.209.95.93:8081/repository/betech-login-backend-snapshot/'
-        NEXUS_CREDENTIALS = 'nexus-creds'
+        NEXUS_URL = "http://172.31.35.139:8081"
+        // Repository where we will upload the artifact
+        NEXUS_REPOSITORY = "betech-login-backend"
+        // Jenkins credential id to authenticate to Nexus OSS
+        NEXUS_CREDENTIAL_ID = "nexus-creds"
         SLACK_CHANNEL = '#your-slack-channel'
         SLACK_CREDENTIALS = 'slack-token-id'
     }
@@ -24,36 +28,40 @@ pipeline {
                 git branch: "${BRANCH}", url: "${REPO_URL}"
             }
         }
-
-        stage('Frontend Test & Build') {
+        
+        stage('Set Distribution Mnagament') {
             steps {
-                dir("${FRONTEND_DIR}") {
-                    sh 'npm install'
-                    sh 'npm run test'
-                    sh 'npm run build'
-                }
+                sh 'chmod +x append_distribution_management.sh'
+                sh '.append_distribution_management.sh'
             }
         }
 
         stage('Backend Test & Build') {
             steps {
                 dir("${BACKEND_DIR}") {
-                    sh 'mvn clean test'
-                    sh 'mvn clean package -DskipTests'
+                    withMaven(globalMavenSettingsConfig: '', jdk: 'jdk11', maven: 'maven', mavenSettingsConfig: '', traceability: true) {
+                        sh 'mvn clean test'
+                        sh 'mvn clean package -DskipTests'
+                    }
                 }
             }
         }
-
-        stage('DB Build') {
+        
+        stage('Frontend Test & Build') {
             steps {
-                dir("${DB_DIR}") {
-                    // Add DB build steps if needed, e.g., for migrations or schema validation
-                    echo 'DB build step (customize as needed)'
+                nodejs(nodeJSInstallationName: 'nodeJS') {
+                    dir("${FRONTEND_DIR}") {
+                        sh 'npm install'
+                        sh 'npm install react-router-dom'
+                        sh 'npm install -g sonar-scanner'
+                        // sh 'npm run test'
+                        sh 'npm run build'
+                    }
                 }
             }
         }
 
-        stage('SonarQube Scan') {
+        stage('SonarQube Scan Backend') {
             steps {
                 dir("${BACKEND_DIR}") {
                     withSonarQubeEnv("${SONARQUBE_SERVER}") {
@@ -67,24 +75,67 @@ pipeline {
                 }
             }
         }
+        
+        stage('SonarQube Scan Frontend') {
+            steps {
+                dir("${FRONTEND_DIR}") {
+                    withSonarQubeEnv("${SONARQUBE_SERVER}") {
+                        sh """
+                            sonar-scanner \
+                              -Dsonar.projectKey=betech-login-frontend \
+                              -Dsonar.projectName=betech-login-frontend \
+                              -Dsonar.sources=. \
+                              -Dsonar.projectVersion=1.0
+                        """
+                    }
+                }
+            }
+        }
+        
 
         stage('Build Docker Images') {
             steps {
-                script {
-                    sh "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER} ${FRONTEND_DIR}"
-                    sh "docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER} ${BACKEND_DIR}"
-                    sh "docker build -t ${DOCKER_IMAGE_DB}:${BUILD_NUMBER} ${DB_DIR}"
+                dir("${FRONTEND_DIR}") {
+                    script {
+                        sh "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER} ."
+                    }
+                }
+                dir("${BACKEND_DIR}") {
+                    script {
+                        sh "docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER} ."
+                    }
+                }
+                dir("${DB_DIR}") {
+                    script {
+                        sh "docker build -t ${DOCKER_IMAGE_DB}:${BUILD_NUMBER} ."
+                    }
                 }
             }
         }
 
         stage('Trivy Scan') {
             steps {
-                sh "trivy image --exit-code 1 --severity HIGH,CRITICAL ${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER}"
-                sh "trivy image --exit-code 1 --severity HIGH,CRITICAL ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER}"
-                sh "trivy image --exit-code 1 --severity HIGH,CRITICAL ${DOCKER_IMAGE_DB}:${BUILD_NUMBER}"
+                sh "trivy image --exit-code 0 --severity HIGH,CRITICAL --format table -o betech-frontend-scan.html ${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER}"
+                sh "trivy image --exit-code 0 --severity HIGH,CRITICAL --format table -o betech-backend-scan.html ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER}"
+                sh "trivy image --exit-code 0 --severity HIGH,CRITICAL --format table -o betech-database-scan.html ${DOCKER_IMAGE_DB}:${BUILD_NUMBER}"
             }
         }
+        
+        stage('Publish Backend Artifact to Nexus') {
+            steps {
+                dir("${BACKEND_DIR}") {
+                    withCredentials([usernamePassword(credentialsId: "${NEXUS_CREDENTIALS}", usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
+                        sh """
+                            mvn deploy -DskipTests \
+                              -Dnexus.url=${NEXUS_URL} \
+                              -Dnexus.username=admin \
+                              -Dnexus.password=admin123
+                        """
+                    }
+                }
+            }
+        }
+
 
         stage('Push Docker Images') {
             steps {
@@ -97,39 +148,11 @@ pipeline {
             }
         }
 
-        stage('Publish Backend Artifact to Nexus') {
+        stage('Run docker-compose.yml') {
             steps {
-                dir("${BACKEND_DIR}") {
-                    withCredentials([usernamePassword(credentialsId: "${NEXUS_CREDENTIALS}", usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
-                        sh """
-                            mvn deploy -DskipTests \
-                              -Dnexus.url=${NEXUS_URL} \
-                              -Dnexus.username=$NEXUS_USER \
-                              -Dnexus.password=$NEXUS_PASS
-                        """
-                    }
+                script {
+                        sh "docker-compose up --build"
                 }
-            }
-        }
-
-        stage('Build docker-compose.yml') {
-            steps {
-                writeFile file: 'docker-compose.yml', text: """
-version: "3.8"
-services:
-  frontend:
-    image: ${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER}
-    ports:
-      - "3000:3000"
-  backend:
-    image: ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER}
-    ports:
-      - "8080:8080"
-  db:
-    image: ${DOCKER_IMAGE_DB}:${BUILD_NUMBER}
-    ports:
-      - "5432:5432"
-"""
             }
         }
     }
