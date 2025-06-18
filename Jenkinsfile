@@ -32,7 +32,7 @@ pipeline {
         stage('Set Distribution Mnagament') {
             steps {
                 sh 'chmod +x append_distribution_management.sh'
-                sh '.append_distribution_management.sh'
+                sh './append_distribution_management.sh'
             }
         }
 
