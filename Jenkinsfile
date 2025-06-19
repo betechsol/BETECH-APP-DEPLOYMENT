@@ -29,14 +29,14 @@ pipeline {
             }
         }
         
-        stage('Set Distribution Mnagament') {
+        stage('Set POM File Distribution Managament') {
             steps {
                 sh 'chmod +x append_distribution_management.sh'
                 sh './append_distribution_management.sh'
             }
         }
 
-        stage('Backend Test & Build') {
+        stage('Backend Test & Build Artifacts') {
             steps {
                 dir("${BACKEND_DIR}") {
                     withMaven(globalMavenSettingsConfig: '', jdk: 'jdk11', maven: 'maven', mavenSettingsConfig: '', traceability: true) {
@@ -47,7 +47,7 @@ pipeline {
             }
         }
         
-        stage('Frontend Test & Build') {
+        stage('Frontend Test & Build Artifacts') {
             steps {
                 nodejs(nodeJSInstallationName: 'nodeJS') {
                     dir("${FRONTEND_DIR}") {
@@ -76,6 +76,23 @@ pipeline {
             }
         }
         
+        stage('Backend OWASP Dependency-Check Scan') {
+            steps {
+                dir('${BACKEND_DIR}') {
+                    dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
+                    dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+                }
+            }
+        }
+        
+        stage('Backend Trivy File Scan') {
+            steps {
+                dir('${BACKEND_DIR}') {
+                    sh 'trivy fs . > trivyfs.txt'
+                }
+            }
+        }
+        
         stage('SonarQube Scan Frontend') {
             steps {
                 dir("${FRONTEND_DIR}") {
@@ -92,9 +109,29 @@ pipeline {
             }
         }
         
+        stage('Frontend OWASP Dependency-Check Scan') {
+            steps {
+                dir('${FRONTEND_DIR}') {
+                    dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
+                    dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+                }
+            }
+        }
+        
+        stage('Frontend Trivy File Scan') {
+            steps {
+                dir('${FRONTEND_DIR}') {
+                    sh 'trivy fs . > trivyfs.txt'
+                }
+            }
+        }
 
         stage('Build Docker Images') {
             steps {
+                script {
+                    sh 'docker system prune -f'
+                    sh 'docker container prune -f'
+                }
                 dir("${FRONTEND_DIR}") {
                     script {
                         sh "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER} ."
@@ -113,7 +150,7 @@ pipeline {
             }
         }
 
-        stage('Trivy Scan') {
+        stage('Trivy Image Scan') {
             steps {
                 sh "trivy image --exit-code 0 --severity HIGH,CRITICAL --format table -o betech-frontend-scan.html ${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER}"
                 sh "trivy image --exit-code 0 --severity HIGH,CRITICAL --format table -o betech-backend-scan.html ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER}"
@@ -124,17 +161,31 @@ pipeline {
         stage('Publish Backend Artifact to Nexus') {
             steps {
                 dir("${BACKEND_DIR}") {
-                    withCredentials([usernamePassword(credentialsId: "${NEXUS_CREDENTIALS}", usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
+                    withCredentials([usernamePassword(credentialsId: "${NEXUS_CREDENTIAL_ID}", usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
                         sh """
                             mvn deploy -DskipTests \
-                              -Dnexus.url=${NEXUS_URL} \
-                              -Dnexus.username=admin \
-                              -Dnexus.password=admin123
+                              -Dnexus.username=${NEXUS_USER} \
+                              -Dnexus.password=${NEXUS_PASS}
                         """
                     }
                 }
             }
         }
+        
+        // stage('Frontend Test & Build Artifacts') {
+        //     steps {
+        //         nodejs(nodeJSInstallationName: 'nodeJS') {
+        //             dir("${FRONTEND_DIR}") {
+        //                 sh """
+        //                     npm set registry ${NEXUS_URL}/repository/betech-frontend-snapshot/
+        //                     npm set //${NEXUS_URL#*//}/repository/betech-frontend-snapshot/:_auth \$(echo -n "$NEXUS_USER:$NEXUS_PASS" | base64)
+        //                     npm set //${NEXUS_URL#*//}/repository/betech-frontend-snapshot/:always-auth true
+        //                     npm publish
+        //                 """
+        //             }
+        //         }
+        //     }
+        // }
 
 
         stage('Push Docker Images') {
@@ -148,31 +199,31 @@ pipeline {
             }
         }
 
-        stage('Run docker-compose.yml') {
-            steps {
-                script {
-                        sh "docker-compose up --build"
-                }
-            }
-        }
+        // stage('Run docker-compose.yml') {
+        //     steps {
+        //         script {
+        //                 sh "docker-compose up --build"
+        //         }
+        //     }
+        // }
     }
 
-    post {
-        success {
-            slackSend (
-                channel: "${SLACK_CHANNEL}",
-                color: '#36a64f',
-                message: "Build #${BUILD_NUMBER} for ${env.JOB_NAME} succeeded! :tada:",
-                tokenCredentialId: "${SLACK_CREDENTIALS}"
-            )
-        }
-        failure {
-            slackSend (
-                channel: "${SLACK_CHANNEL}",
-                color: '#FF0000',
-                message: "Build #${BUILD_NUMBER} for ${env.JOB_NAME} failed! :x:",
-                tokenCredentialId: "${SLACK_CREDENTIALS}"
-            )
-        }
-    }
+    // post {
+    //     success {
+    //         slackSend (
+    //             channel: "${SLACK_CHANNEL}",
+    //             color: '#36a64f',
+    //             message: "Build #${BUILD_NUMBER} for ${env.JOB_NAME} succeeded! :tada:",
+    //             tokenCredentialId: "${SLACK_CREDENTIALS}"
+    //         )
+    //     }
+    //     failure {
+    //         slackSend (
+    //             channel: "${SLACK_CHANNEL}",
+    //             color: '#FF0000',
+    //             message: "Build #${BUILD_NUMBER} for ${env.JOB_NAME} failed! :x:",
+    //             tokenCredentialId: "${SLACK_CREDENTIALS}"
+    //         )
+    //     }
+    // }
 }
