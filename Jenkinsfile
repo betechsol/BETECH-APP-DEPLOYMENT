@@ -199,13 +199,16 @@ pipeline {
             }
         }
 
-        // stage('Run docker-compose.yml') {
-        //     steps {
-        //         script {
-        //                 sh "docker-compose up --build"
-        //         }
-        //     }
-        // }
+        stage('Run docker-compose.yml') {
+            agent {
+                label 'DeploymentNode'
+            }
+            steps {
+                script {
+                        sh "docker-compose up --build"
+                }
+            }
+        }
     }
 
     // post {
