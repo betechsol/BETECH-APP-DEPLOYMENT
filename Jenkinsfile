@@ -200,9 +200,6 @@ pipeline {
         }
 
         stage('Run docker-compose.yml') {
-            agent {
-                label 'DeploymentNode'
-            }
             steps {
                 script {
                         sh "docker-compose up --build"
