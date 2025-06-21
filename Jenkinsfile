@@ -18,7 +18,7 @@ pipeline {
         NEXUS_REPOSITORY = "betech-login-backend"
         // Jenkins credential id to authenticate to Nexus OSS
         NEXUS_CREDENTIAL_ID = "nexus-creds"
-        SLACK_CHANNEL = '#your-slack-channel'
+        SLACK_CHANNEL = '#betech-slack-channel'
         SLACK_CREDENTIALS = 'slack-token-id'
     }
 
@@ -49,13 +49,13 @@ pipeline {
         
         stage('Frontend Test & Build Artifacts') {
             steps {
-                nodejs(nodeJSInstallationName: 'nodeJS') {
-                    dir("${FRONTEND_DIR}") {
-                        sh 'npm install'
-                        sh 'npm install react-router-dom'
-                        sh 'npm install -g sonar-scanner'
-                        // sh 'npm run test'
-                        sh 'npm run build'
+                withCredentials([usernamePassword(credentialsId: "${NEXUS_CREDENTIAL_ID}", usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
+                    nodejs(nodeJSInstallationName: 'nodeJS') {
+                        dir("${FRONTEND_DIR}") {
+                            sh 'npm install'
+                            sh 'npm run test'
+                            sh 'npm run build'
+                        }
                     }
                 }
             }
@@ -128,23 +128,25 @@ pipeline {
 
         stage('Build Docker Images') {
             steps {
-                script {
-                    sh 'docker system prune -f'
-                    sh 'docker container prune -f'
-                }
-                dir("${FRONTEND_DIR}") {
+                withDockerRegistry(credentialsId: 'dockerhub-creds', url: 'https://index.docker.io/v1/') {
                     script {
-                        sh "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER} ."
+                        sh 'docker system prune -f'
+                        sh 'docker container prune -f'
                     }
-                }
-                dir("${BACKEND_DIR}") {
-                    script {
-                        sh "docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER} ."
+                    dir("${FRONTEND_DIR}") {
+                        script {
+                            sh "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER} ."
+                        }
                     }
-                }
-                dir("${DB_DIR}") {
-                    script {
-                        sh "docker build -t ${DOCKER_IMAGE_DB}:${BUILD_NUMBER} ."
+                    dir("${BACKEND_DIR}") {
+                        script {
+                            sh "docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER} ."
+                        }
+                    }
+                    dir("${DB_DIR}") {
+                        script {
+                            sh "docker build -t ${DOCKER_IMAGE_DB}:${BUILD_NUMBER} ."
+                        }
                     }
                 }
             }
@@ -172,16 +174,16 @@ pipeline {
             }
         }
         
-        // stage('Frontend Test & Build Artifacts') {
+        // stage('Publish Frontend Artifact to Nexus') {
         //     steps {
         //         nodejs(nodeJSInstallationName: 'nodeJS') {
         //             dir("${FRONTEND_DIR}") {
-        //                 sh """
-        //                     npm set registry ${NEXUS_URL}/repository/betech-frontend-snapshot/
-        //                     npm set //${NEXUS_URL#*//}/repository/betech-frontend-snapshot/:_auth \$(echo -n "$NEXUS_USER:$NEXUS_PASS" | base64)
-        //                     npm set //${NEXUS_URL#*//}/repository/betech-frontend-snapshot/:always-auth true
-        //                     npm publish
-        //                 """
+        //                 // sh '''
+        //                 //     AUTH=$(echo -n "$NEXUS_USER:$NEXUS_PASS" | base64)
+        //                 //     '''
+        //                 // npm set registry=${NEXUS_URL}/repository/betech-frontend-snapshot/
+        //                 // npm set //${NEXUS_URL}/repository/betech-frontend-snapshot/:_auth=${AUTH}
+        //                 sh 'npm publish'
         //             }
         //         }
         //     }
@@ -190,8 +192,7 @@ pipeline {
 
         stage('Push Docker Images') {
             steps {
-                withCredentials([usernamePassword(credentialsId: "${DOCKERHUB_CREDENTIALS}", usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                    sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
+                withDockerRegistry(credentialsId: 'dockerhub-creds', url: 'https://index.docker.io/v1/') {
                     sh "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER}"
                     sh "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER}"
                     sh "docker push ${DOCKER_IMAGE_DB}:${BUILD_NUMBER}"
@@ -202,7 +203,7 @@ pipeline {
         stage('Run docker-compose.yml') {
             steps {
                 script {
-                        sh "docker-compose up -d --build"
+                    sh "docker-compose up -d --build"
                 }
             }
         }
