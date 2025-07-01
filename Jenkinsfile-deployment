@@ -1,0 +1,108 @@
+pipeline {
+    agent any
+
+    environment {
+        REPO_URL = 'https://github.com/betechsol/BETECH-APP-DEPLOYMENT.git'
+        BRANCH = 'main'
+        BUILD_NUMBER = 'v2.0'
+        DOCKERHUB_CREDENTIALS = 'dockerhub-creds'
+        SLACK_CHANNEL = '#devops-team'
+        SLACK_CREDENTIALS = 'slack-token-id'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: "${BRANCH}", url: "${REPO_URL}"
+            }
+        }
+
+        stage('Project Trivy File Scan') {
+            steps {
+                    sh 'trivy fs . > trivyfs.txt'
+            }
+        }
+
+        stage('Run docker-compose.yml') {
+            steps {
+                script {
+                    sh "docker-compose up -d --build"
+                    sh "sleep 5"
+                }
+            }
+        }
+        
+        stage('Check Deployment Status') {
+            steps {
+                script {
+                    sh "docker ps"
+                }
+            }
+        }
+    }
+    
+    
+ post {
+        always {
+            script {
+                def jobName = env.JOB_NAME
+                def buildNumber = env.BUILD_NUMBER
+                def pipelineStatus = currentBuild.result ?: 'UNKNOWN'
+                def bannerColor = pipelineStatus.toUpperCase() == 'SUCCESS' ? 'green' : 'red'
+                
+                def body = """
+                    <html>
+                    <body>
+                    <div style="border: 4px solid ${bannerColor}; padding: 10px;">
+                    <h2>${jobName} - Build ${buildNumber}</h2>
+                    <div style="background-color: ${bannerColor}; padding: 10px;">
+                    <h3 style="color: white;">Pipeline Status: ${pipelineStatus.toUpperCase()}</h3>
+                    </div>
+                    <p>Check the <a href="${BUILD_URL}">console output</a>.</p>
+                    </div>
+                    </body>
+                    </html>
+                """
+                
+                emailext (
+                    subject: "${jobName} - Build ${buildNumber} - ${pipelineStatus.toUpperCase()}",
+                    body: body,
+                    to: 'betechincorporated@gmail.com',
+                    from: 'jenkins@example.com',
+                    replyTo: 'jenkins@example.com',
+                    mimeType: 'text/html',
+                    attachmentsPattern: 'trivyfs.txt'
+                )
+            }
+        }
+
+        success {
+            slackSend (
+                channel: "${SLACK_CHANNEL}",
+                color: '#36a64f',
+                message: "Build #${BUILD_NUMBER} for ${env.JOB_NAME} succeeded! :white_check_mark:"
+            )
+        }
+        failure {
+            script {
+                def failedStage = ''
+                def flowNodes = currentBuild.rawBuild.getExecution().getCurrentHeads()
+                if (flowNodes && flowNodes.size() > 0) {
+                    failedStage = flowNodes[0].displayName
+                }
+                slackSend (
+                    channel: "${SLACK_CHANNEL}",
+                    color: '#FF0000',
+                    message: "Build #${BUILD_NUMBER} for ${env.JOB_NAME} failed in stage: ${failedStage} :x:"
+                )
+            }
+        }
+        unstable {
+            slackSend (
+                channel: "${SLACK_CHANNEL}",
+                color: '#FFA500',
+                message: "Build #${BUILD_NUMBER} for ${env.JOB_NAME} is unstable. :warning:"
+            )
+        }
+    }    
+}

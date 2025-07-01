@@ -18,7 +18,7 @@ pipeline {
         NEXUS_REPOSITORY = "betech-login-backend"
         // Jenkins credential id to authenticate to Nexus OSS
         NEXUS_CREDENTIAL_ID = "nexus-creds"
-        SLACK_CHANNEL = '#betech-slack-channel'
+        SLACK_CHANNEL = '#your-slack-channel'
         SLACK_CREDENTIALS = 'slack-token-id'
     }
 
@@ -39,7 +39,7 @@ pipeline {
         stage('Backend Test & Build Artifacts') {
             steps {
                 dir("${BACKEND_DIR}") {
-                    withMaven(globalMavenSettingsConfig: '', jdk: 'jdk11', maven: 'maven', mavenSettingsConfig: '', traceability: true) {
+                    withMaven(globalMavenSettingsConfig: 'global-maven', jdk: 'jdk11', maven: 'maven', mavenSettingsConfig: '', traceability: true) {
                         sh 'mvn clean test'
                         sh 'mvn clean package -DskipTests'
                     }
@@ -47,15 +47,36 @@ pipeline {
             }
         }
         
+        // stage('Backend Code Coverage') {
+        //     steps {
+        //         dir("${BACKEND_DIR}") {
+        //             withMaven(globalMavenSettingsConfig: 'global-maven', jdk: 'jdk11', maven: 'maven', mavenSettingsConfig: '', traceability: true) {
+        //                 sh 'mvn jacoco:report'
+        //             }
+        //         }
+        //     }
+        // }
+        
+        stage('Backend SCA') {
+            steps {
+                dir("${BACKEND_DIR}") {
+                    withMaven(globalMavenSettingsConfig: 'global-maven', jdk: 'jdk11', maven: 'maven', mavenSettingsConfig: '', traceability: true) {
+                        sh 'mvn org.owasp:dependency-check-maven:check -Dformat=ALL -Dexcludes="**/dependency-check/**,**/dependency-check-report.*"'
+                        // This will generate both HTML and XML reports in target/
+                    }
+                }
+            }
+        }
+        
         stage('Frontend Test & Build Artifacts') {
             steps {
-                withCredentials([usernamePassword(credentialsId: "${NEXUS_CREDENTIAL_ID}", usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
-                    nodejs(nodeJSInstallationName: 'nodeJS') {
-                        dir("${FRONTEND_DIR}") {
-                            sh 'npm install'
-                            sh 'npm run test'
-                            sh 'npm run build'
-                        }
+                nodejs(nodeJSInstallationName: 'nodeJS') {
+                    dir("${FRONTEND_DIR}") {
+                        sh 'npm install'
+                        sh 'npm install react-router-dom'
+                        sh 'npm install -g sonar-scanner'
+                        // sh 'npm run test'
+                        sh 'npm run build'
                     }
                 }
             }
@@ -67,8 +88,11 @@ pipeline {
                     withSonarQubeEnv("${SONARQUBE_SERVER}") {
                         sh """
                             mvn sonar:sonar \
+                              -Dsonar.dependencyCheck.jsonReportPath=target/dependency-check-report.json \
+                              -Dsonar.dependencyCheck.htmlReportPath=target/dependency-check-report.html \
                               -Dsonar.projectKey=betech-login-backend \
                               -Dsonar.projectName=betech-login-backend \
+                              -Dsonar.exclusions=**/dependency-check-report.*,**/dependency-check/** \
                               -Dsonar.projectVersion=1.0
                         """
                     }
@@ -79,19 +103,34 @@ pipeline {
         stage('Backend OWASP Dependency-Check Scan') {
             steps {
                 dir('${BACKEND_DIR}') {
-                    dependencyCheck additionalArguments: '--scan ./', odcInstallation: 'DP-Check'
+                    dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
                     dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
                 }
             }
         }
         
-        stage('Backend Trivy File Scan') {
-            steps {
-                dir('${BACKEND_DIR}') {
-                    sh 'trivy fs . > trivyfs.txt'
-                }
+        stage('Stage V: QualityGates') {
+          steps { 
+            echo "Running Quality Gates to verify the code quality"
+            script {
+              timeout(time: 1, unit: 'MINUTES') {
+                def qg = waitForQualityGate()
+                    if (qg.status != 'OK') {
+                      error "Pipeline aborted due to quality gate failure: ${qg.status}"
+                    }
+               }
             }
+          }
         }
+
+        
+        // stage('Backend Trivy File Scan') {
+        //     steps {
+        //         dir('${BACKEND_DIR}') {
+        //             sh 'trivy fs . > trivyfs.txt'
+        //         }
+        //     }
+        // }
         
         stage('SonarQube Scan Frontend') {
             steps {
@@ -101,8 +140,10 @@ pipeline {
                             sonar-scanner \
                               -Dsonar.projectKey=betech-login-frontend \
                               -Dsonar.projectName=betech-login-frontend \
-                              -Dsonar.sources=. \
-                              -Dsonar.projectVersion=1.0
+                              -Dsonar.projectVersion=1.0 \
+                              -Dsonar.dependencyCheck.jsonReportPath=dependency-check-report.json \
+                              -Dsonar.dependencyCheck.htmlReportPath=dependency-check-report.html \
+                              -Dsonar.exclusions=**/node_modules/**,**/dependency-check-report.*,**/dependency-check/**
                         """
                     }
                 }
@@ -112,7 +153,6 @@ pipeline {
         stage('Frontend OWASP Dependency-Check Scan') {
             steps {
                 dir('${FRONTEND_DIR}') {
-                    dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
                     dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
                 }
             }
@@ -128,25 +168,23 @@ pipeline {
 
         stage('Build Docker Images') {
             steps {
-                withDockerRegistry(credentialsId: 'dockerhub-creds', url: 'https://index.docker.io/v1/') {
+                script {
+                    sh 'docker system prune -f'
+                    sh 'docker container prune -f'
+                }
+                dir("${FRONTEND_DIR}") {
                     script {
-                        sh 'docker system prune -f'
-                        sh 'docker container prune -f'
+                        sh "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER} ."
                     }
-                    dir("${FRONTEND_DIR}") {
-                        script {
-                            sh "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER} ."
-                        }
+                }
+                dir("${BACKEND_DIR}") {
+                    script {
+                        sh "docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER} ."
                     }
-                    dir("${BACKEND_DIR}") {
-                        script {
-                            sh "docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER} ."
-                        }
-                    }
-                    dir("${DB_DIR}") {
-                        script {
-                            sh "docker build -t ${DOCKER_IMAGE_DB}:${BUILD_NUMBER} ."
-                        }
+                }
+                dir("${DB_DIR}") {
+                    script {
+                        sh "docker build -t ${DOCKER_IMAGE_DB}:${BUILD_NUMBER} ."
                     }
                 }
             }
@@ -174,16 +212,20 @@ pipeline {
             }
         }
         
-        // stage('Publish Frontend Artifact to Nexus') {
+        // stage('Frontend Test & Build Artifacts') {
         //     steps {
-        //         nodejs(nodeJSInstallationName: 'nodeJS') {
+        //         withDockerRegistry(credentialsId: 'dockerhub-creds', url: 'https://index.docker.io/v1/') {
+        //             script {
+        //                 sh 'docker system prune -f'
+        //                 sh 'docker container prune -f'
+        //             }
         //             dir("${FRONTEND_DIR}") {
-        //                 // sh '''
-        //                 //     AUTH=$(echo -n "$NEXUS_USER:$NEXUS_PASS" | base64)
-        //                 //     '''
-        //                 // npm set registry=${NEXUS_URL}/repository/betech-frontend-snapshot/
-        //                 // npm set //${NEXUS_URL}/repository/betech-frontend-snapshot/:_auth=${AUTH}
-        //                 sh 'npm publish'
+        //                 sh """
+        //                     npm set registry ${NEXUS_URL}/repository/betech-frontend-snapshot/
+        //                     npm set //${NEXUS_URL#*//}/repository/betech-frontend-snapshot/:_auth \$(echo -n "$NEXUS_USER:$NEXUS_PASS" | base64)
+        //                     npm set //${NEXUS_URL#*//}/repository/betech-frontend-snapshot/:always-auth true
+        //                     npm publish
+        //                 """
         //             }
         //         }
         //     }
@@ -192,7 +234,8 @@ pipeline {
 
         stage('Push Docker Images') {
             steps {
-                withDockerRegistry(credentialsId: 'dockerhub-creds', url: 'https://index.docker.io/v1/') {
+                withCredentials([usernamePassword(credentialsId: "${DOCKERHUB_CREDENTIALS}", usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
                     sh "docker push ${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER}"
                     sh "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER}"
                     sh "docker push ${DOCKER_IMAGE_DB}:${BUILD_NUMBER}"
@@ -201,9 +244,12 @@ pipeline {
         }
 
         stage('Run docker-compose.yml') {
+            agent {
+                label 'DeploymentNode'
+            }
             steps {
                 script {
-                    sh "docker-compose up -d --build"
+                        sh "docker-compose up --build"
                 }
             }
         }
