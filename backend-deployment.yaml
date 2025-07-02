@@ -1,0 +1,54 @@
+# backend-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: betechnet-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: betechnet-backend
+  template:
+    metadata:
+      labels:
+        app: betechnet-backend
+    spec:
+      containers:
+        - name: betechnet-backend
+          image: betechinc/betech-app-deployment_betechnet-backend:v1.1
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:postgresql://betech-db.cnw0sq60uluc.us-west-2.rds.amazonaws.com:5432/betech_db
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: rds-postgres-secret
+                  key: username
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rds-postgres-secret
+                  key: password
+            - name: SPRING_JPA_HIBERNATE_DDL_AUTO
+              value: update
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: betechnet-backend
+spec:
+  selector:
+    app: betechnet-backend
+  ports:
+    - port: 8080
+      targetPort: 8080
+  type: ClusterIP

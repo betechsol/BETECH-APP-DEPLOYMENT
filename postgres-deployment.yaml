@@ -1,0 +1,69 @@
+# postgres-deployment.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: betech-storage-class
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: betechnet-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: betechnet-postgres
+  template:
+    metadata:
+      labels:
+        app: betechnet-postgres
+    spec:
+      containers:
+        - name: betechnet-postgres
+          image: postgres:14
+          env:
+            - name: POSTGRES_DB
+              value: BETECH_DB
+            - name: POSTGRES_USER
+              value: admin
+            - name: POSTGRES_PASSWORD
+              value: admmin123
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - mountPath: /var/lib/postgresql/data
+              name: postgres-storage
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-pvc
+        - name: initdb
+          configMap:
+            name: postgres-initdb
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: betechnet-postgres
+spec:
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: betechnet-postgres
