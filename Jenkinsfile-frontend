@@ -21,7 +21,7 @@ pipeline {
         SONAR_PROJECT_KEY = 'betech-login-frontend'
         SONAR_PROJECT_NAME = 'betech-login-frontend'
         SONAR_PROJECT_VERSION = '1.0'
-        DEP_CHECK_EXCLUDES = '**/node_modules/**,**/dependency-check-report.*,**/dependency-check/**'
+        DEP_CHECK_EXCLUDES = '**/node_modules/**,**/dependency-check-report.*,**/dependency-check/**,**/dependency-check-jenkins.html'
         DEP_CHECK_FORMAT = 'ALL'
     }
 
