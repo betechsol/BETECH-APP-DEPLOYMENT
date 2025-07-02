@@ -1,7 +1,7 @@
 /* groovylint-disable DuplicateStringLiteral */
 /* groovylint-disable-next-line CompileStatic */
 pipeline {
-    agent any
+    agent { label 'Build Server' }
 
     environment {
         REPO_URL = 'https://github.com/betechsol/BETECH-APP-DEPLOYMENT.git'
@@ -13,7 +13,7 @@ pipeline {
         DOCKERHUB_CREDENTIALS = 'dockerhub-creds'
         NEXUS_URL = 'http://172.31.35.139:8081'
         // Repository where we will upload the artifact
-        NEXUS_REPOSITORY = 'betech-login-backend'
+        NEXUS_REPOSITORY = 'betech-login-frontend'
         // Jenkins credential id to authenticate to Nexus OSS
         NEXUS_CREDENTIAL_ID = 'nexus-creds'
         SLACK_CHANNEL = '#devops-team'
@@ -33,76 +33,73 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git branch: "${BRANCH}", url: "${REPO_URL}"
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: "${BRANCH}"]],
+                    userRemoteConfigs: [[url: "${REPO_URL}"]],
+                    extensions: [
+                        [$class: 'SparseCheckoutPaths', sparseCheckoutPaths: [
+                            [path: 'betech-login-frontend']
+                        ]]
+                    ]
+                ])
             }
         }
 
-        // This stage tests and packages the frontend artifacts.
         stage('Frontend Test & Build Artifacts') {
             steps {
-                dir("${FRONTEND_DIR}") {
-                    withCredentials([
-                        usernamePassword(
-                            credentialsId: "${NEXUS_CREDENTIAL_ID}",
-                            usernameVariable: 'NEXUS_USER',
-                            passwordVariable: 'NEXUS_PASS'
-                        )
-                    ]) {
-                        nodejs(nodeJSInstallationName: "${NODEJS_NAME}") {
-                            sh """
-                                AUTH=\$(echo -n "$NEXUS_USER:$NEXUS_PASS" | base64)'
-                                echo "registry=${NPM_REGISTRY_URL}" > .npmrc
-                                echo "//${NPM_REGISTRY_URL.replace('http://', '')}:_auth=\$AUTH" >> .npmrc
-                            """
-                            sh 'npm install'
-                            sh 'npm run test || true'
-                            sh 'npm run build'
-                        }
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: "${NEXUS_CREDENTIAL_ID}",
+                        usernameVariable: 'NEXUS_USER',
+                        passwordVariable: 'NEXUS_PASS'
+                    )
+                ]) {
+                    nodejs(nodeJSInstallationName: "${NODEJS_NAME}") {
+                        sh '''
+                            AUTH=$(echo -n "$NEXUS_USER:$NEXUS_PASS" | base64)
+                            echo "registry=${NPM_REGISTRY_URL}" > .npmrc
+                            echo "//$(echo ${NPM_REGISTRY_URL} | sed 's|http://||'):_auth=$AUTH" >> .npmrc
+                        '''
+                        sh 'npm install'
+                        sh 'npm run test || true'
+                        sh 'npm run build'
                     }
                 }
             }
         }
 
-        // This stage will generate both HTML and XML dependency-check-reports.
         stage('Frontend SCA') {
             steps {
-                dir("${FRONTEND_DIR}") {
-                    nodejs(nodeJSInstallationName: "${NODEJS_NAME}") {
-                        sh """
-                            sudo dependency-check.sh \
-                              --project ${SONAR_PROJECT_KEY} \
-                              --scan . \
-                              --exclude ${DEP_CHECK_EXCLUDES} \
-                              --format ${DEP_CHECK_FORMAT} \
-                              --disableYarnAudit
-                        """
-                    }
+                nodejs(nodeJSInstallationName: "${NODEJS_NAME}") {
+                    sh """
+                        sudo dependency-check.sh \
+                          --project ${SONAR_PROJECT_KEY} \
+                          --scan . \
+                          --exclude ${DEP_CHECK_EXCLUDES} \
+                          --format ${DEP_CHECK_FORMAT} \
+                          --disableYarnAudit
+                    """
                 }
             }
         }
 
-
-        // This stage performs the SonarQube Scan on the frontend artifacts.
         stage('SonarQube Scan Frontend') {
             steps {
-                dir("${FRONTEND_DIR}") {
-                    withSonarQubeEnv("${SONARQUBE_SERVER}") {
-                        sh """
-                            sonar-scanner \
-                              -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
-                              -Dsonar.projectName=${SONAR_PROJECT_NAME} \
-                              -Dsonar.projectVersion=${SONAR_PROJECT_VERSION} \
-                              -Dsonar.dependencyCheck.jsonReportPath=dependency-check-report.json \
-                              -Dsonar.dependencyCheck.htmlReportPath=dependency-check-report.html \
-                              -Dsonar.exclusions=${DEP_CHECK_EXCLUDES}
-                        """
-                    }
+                withSonarQubeEnv("${SONARQUBE_SERVER}") {
+                    sh """
+                        sonar-scanner \
+                          -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                          -Dsonar.projectName=${SONAR_PROJECT_NAME} \
+                          -Dsonar.projectVersion=${SONAR_PROJECT_VERSION} \
+                          -Dsonar.dependencyCheck.jsonReportPath=dependency-check-report.json \
+                          -Dsonar.dependencyCheck.htmlReportPath=dependency-check-report.html \
+                          -Dsonar.exclusions=${DEP_CHECK_EXCLUDES}
+                    """
                 }
             }
         }
 
-
-        // Wait for quality gate results from SonarQube Scan.
         stage('Wait for QualityGates') {
             steps { 
                 echo 'Running Quality Gates to verify the code quality'
@@ -117,33 +114,23 @@ pipeline {
             }
         }
         
-        
-        // This stage publishes the OWASP Dependency-Check report.
         stage('Frontend OWASP Dependency-Check Scan') {
             steps {
-                dir("${FRONTEND_DIR}") {
-                    dependencyCheck additionalArguments: '', odcInstallation: 'DP-Check'
-                    dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
-                }
+                dependencyCheck additionalArguments: '', odcInstallation: 'DP-Check'
+                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
             }
         }
 
-        
-        // This stage builds the Docker images for the frontend application.
         stage('Build Docker Images') {
             steps {
                 withDockerRegistry(credentialsId: "${DOCKERHUB_CREDENTIALS}", url: 'https://index.docker.io/v1/') {
                     sh 'docker system prune -f'
                     sh 'docker container prune -f'
-                    dir("${FRONTEND_DIR}") {
-                        sh "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER} ."
-                    }
+                    sh "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER} ."
                 }
             }
         }
 
-        
-        // This stage scans the frontend image after the build
         stage('Trivy Image Scan') {
             steps {
                 sh """
@@ -154,19 +141,14 @@ pipeline {
             }
         }
         
-        // This stage publishes the backend artifacts to the frontend repository
         stage('Publish Frontend Artifact to Nexus') {
             steps {
-                dir("${FRONTEND_DIR}") {
-                    nodejs(nodeJSInstallationName: "${NODEJS_NAME}") {
-                        sh 'npm publish || true'
-                    }
+                nodejs(nodeJSInstallationName: "${NODEJS_NAME}") {
+                    sh 'npm publish || true'
                 }
             }
         }
 
-
-        // This stage pushes the Docker images to the remote DockerHub repository
         stage('Push Docker Images') {
             steps {
                 withDockerRegistry(credentialsId: "${DOCKERHUB_CREDENTIALS}", url: '') {
