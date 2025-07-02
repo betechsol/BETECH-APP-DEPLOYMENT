@@ -1,23 +1,30 @@
+/* groovylint-disable DuplicateStringLiteral, NestedBlockDepth */
 pipeline {
-    agent any
+    agent { label 'Build Server' }
 
     environment {
         REPO_URL = 'https://github.com/betechsol/BETECH-APP-DEPLOYMENT.git'
         BRANCH = 'main'
         BACKEND_DIR = 'betech-login-backend'
+        NEXUS_REPOSITORY = 'betech-login-backend'
         DB_DIR = 'betech-postgresql-db'
         DOCKER_IMAGE_BACKEND = 'betechinc/betech-app-deployment_betechnet-backend'
         BUILD_NUMBER = 'v2.0'
-        DOCKER_IMAGE_DB = 'betechinc/betech-app-deployment_betechnet-postgres'
+        DOCKER_IMAGE_DB = 'betechinc/betech-app-deployment-betechnet-postgres'
         SONARQUBE_SERVER = 'SonarQubeServer'
         DOCKERHUB_CREDENTIALS = 'dockerhub-creds'
         NEXUS_URL = "http://172.31.35.139:8081"
-        // Repository where we will upload the artifact
-        NEXUS_REPOSITORY = "betech-login-backend"
-        // Jenkins credential id to authenticate to Nexus OSS
-        NEXUS_CREDENTIAL_ID = "nexus-creds"
+        NEXUS_CREDENTIAL_ID = 'nexus-creds'
         SLACK_CHANNEL = '#devops-team'
         SLACK_CREDENTIALS = 'slack-token-id'
+        MAVEN_SETTINGS = 'global-maven'
+        JDK_VERSION = 'jdk11'
+        MAVEN_TOOL = 'maven'
+        SONAR_PROJECT_KEY = 'betech-login-backend'
+        SONAR_PROJECT_NAME = 'betech-login-backend'
+        SONAR_PROJECT_VERSION = '1.0'
+        DEP_CHECK_EXCLUDES = '**/dependency-check-report.*,**/dependency-check/**'
+        DEP_CHECK_FORMAT = 'ALL'
     }
 
     stages {
@@ -26,210 +33,239 @@ pipeline {
                 git branch: "${BRANCH}", url: "${REPO_URL}"
             }
         }
-        
-        // This stage sets up the pom.xml file with the nexus repo
-        stage('Set POM File Distribution Managament') {
+
+        stage('Set POM File Distribution Management') {
             steps {
                 sh 'chmod +x append_distribution_management.sh'
                 sh './append_distribution_management.sh'
             }
         }
 
-        // This stage tests and packages the backend artifacts.
         stage('Backend Test & Build Artifacts') {
             steps {
                 dir("${BACKEND_DIR}") {
-                    withMaven(globalMavenSettingsConfig: 'global-maven', jdk: 'jdk11', maven: 'maven', mavenSettingsConfig: '', traceability: true) {
-                        sh 'mvn clean test'
-                        sh 'mvn clean package -DskipTests'
-                    }
-                }
-            }
-        }
-        
-        // This stage produces the jacoco report.
-        stage('Backend Code Coverage') {
-            steps {
-                dir("${BACKEND_DIR}") {
-                    withMaven(globalMavenSettingsConfig: 'global-maven', jdk: 'jdk11', maven: 'maven', mavenSettingsConfig: '', traceability: true) {
-                        sh 'mvn jacoco:report'
-                    }
-                }
-            }
-        }
-        
-        // This stage will generate both HTML and XML dependency-check-reports in target/
-        stage('Backend SCA') {
-            steps {
-                dir("${BACKEND_DIR}") {
-                    withMaven(globalMavenSettingsConfig: 'global-maven', jdk: 'jdk11', maven: 'maven', mavenSettingsConfig: '', traceability: true) {
-                        sh 'mvn org.owasp:dependency-check-maven:check -Dformat=ALL -Dexcludes="**/dependency-check/**,**/dependency-check-report.*"'
+                    withMaven(
+                        globalMavenSettingsConfig: "${MAVEN_SETTINGS}",
+                        jdk: "${JDK_VERSION}",
+                        maven: "${MAVEN_TOOL}",
+                        mavenSettingsConfig: '',
+                        traceability: true
+                    ) {
+                        sh '''
+                            mvn clean test
+                            mvn clean package -DskipTests
+                        '''
                     }
                 }
             }
         }
 
-        // This stage performs the SonarQube Scan on the backend target
-        stage('SonarQube Scan Backend') {
+        stage('Backend Code Coverage') {
             steps {
                 dir("${BACKEND_DIR}") {
-                    withSonarQubeEnv("${SONARQUBE_SERVER}") {
+                    withMaven(
+                        globalMavenSettingsConfig: "${MAVEN_SETTINGS}",
+                        jdk: "${JDK_VERSION}",
+                        maven: "${MAVEN_TOOL}",
+                        mavenSettingsConfig: '',
+                        traceability: true
+                    ) {
+                        sh 'mvn jacoco:report'
+                    }
+                }
+            }
+        }
+
+        stage('Backend SCA') {
+            steps {
+                dir("${BACKEND_DIR}") {
+                    withMaven(
+                        globalMavenSettingsConfig: "${MAVEN_SETTINGS}",
+                        jdk: "${JDK_VERSION}",
+                        maven: "${MAVEN_TOOL}",
+                        mavenSettingsConfig: '',
+                        traceability: true
+                    ) {
                         sh """
-                            mvn sonar:sonar \
-                              -Dsonar.dependencyCheck.jsonReportPath=target/dependency-check-report.json \
-                              -Dsonar.dependencyCheck.htmlReportPath=target/dependency-check-report.html \
-                              -Dsonar.exclusions=**/dependency-check-report.*,**/dependency-check/** \
-                              -Dsonar.projectKey=betech-login-backend \
-                              -Dsonar.projectName=betech-login-backend \
-                              -Dsonar.projectVersion=1.0
+                            mvn org.owasp:dependency-check-maven:check \
+                                -Dformat=${DEP_CHECK_FORMAT} \
+                                -Dexcludes="${DEP_CHECK_EXCLUDES}"
                         """
                     }
                 }
             }
-        }     
-        
-        // Wait for quality gate results from SonarQube Scan.
-        stage('Wait for QualityGates') {
-            steps { 
-                echo "Running Quality Gates to verify the code quality"
-                script {
-                    timeout(time: 1, unit: 'MINUTES') {
-                    def qg = waitForQualityGate()
-                        if (qg.status != 'OK') {
-                        error "Pipeline aborted due to quality gate failure: ${qg.status}"
+        }
+
+        stage('SonarQube Scan Backend') {
+            steps {
+                dir("${BACKEND_DIR}") {
+                    withMaven(
+                        globalMavenSettingsConfig: "${MAVEN_SETTINGS}",
+                        jdk: "${JDK_VERSION}",
+                        maven: "${MAVEN_TOOL}",
+                        mavenSettingsConfig: '',
+                        traceability: true
+                    ) {
+                        withSonarQubeEnv("${SONARQUBE_SERVER}") {
+                            sh """
+                                mvn sonar:sonar \
+                                  -Dsonar.dependencyCheck.jsonReportPath=target/dependency-check-report.json \
+                                  -Dsonar.dependencyCheck.htmlReportPath=target/dependency-check-report.html \
+                                  -Dsonar.exclusions=${DEP_CHECK_EXCLUDES} \
+                                  -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                                  -Dsonar.projectName=${SONAR_PROJECT_NAME} \
+                                  -Dsonar.projectVersion=${SONAR_PROJECT_VERSION}
+                            """
                         }
                     }
                 }
             }
         }
-        
-        // This stage publishes the dependency check results the pipeline dashboard
+
+        stage('QualityGates') {
+            steps {
+                echo 'Running Quality Gates to verify the code quality'
+                timeout(time: 1, unit: 'MINUTES') {
+                    script {
+                        def qg = waitForQualityGate()
+                        if (qg.status != 'OK') {
+                            error "Pipeline aborted due to quality gate failure: ${qg.status}"
+                        }
+                    }
+                }
+            }
+        }
+
         stage('Backend OWASP Dependency-Check Scan') {
             steps {
-                dir('${BACKEND_DIR}') {
+                dir("${BACKEND_DIR}") {
+                    dependencyCheck additionalArguments: '', odcInstallation: 'DP-Check'
                     dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
                 }
             }
         }
-        
-        // This stage builds the docker images for the backend
+
         stage('Build Docker Images') {
             steps {
-                withDockerRegistry(credentialsId: 'dockerhub-creds', url: '') {
-                    script {
-                        sh 'docker system prune -f'
-                        sh 'docker container prune -f'
-                    }
+                sh 'docker system prune -f'
+                sh 'docker container prune -f'
+                withDockerRegistry(credentialsId: "${DOCKERHUB_CREDENTIALS}", url: '') {
                     dir("${BACKEND_DIR}") {
-                        script {
-                            sh "docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER} ."
-                        }
+                        sh "docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER} ."
                     }
                     dir("${DB_DIR}") {
-                        script {
-                            sh "docker build -t ${DOCKER_IMAGE_DB}:${BUILD_NUMBER} ."
-                        }
+                        sh "docker build -t ${DOCKER_IMAGE_DB}:${BUILD_NUMBER} ."
                     }
                 }
             }
         }
-        
-        // This stage scans the backend and database images after the build
+
         stage('Trivy Image Scan') {
             steps {
-                sh "trivy image --exit-code 0 --severity HIGH,CRITICAL --format table -o betech-backend-scan.html ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER}"
-                sh "trivy image --exit-code 0 --severity HIGH,CRITICAL --format table -o betech-database-scan.html ${DOCKER_IMAGE_DB}:${BUILD_NUMBER}"
+                sh """
+                    trivy image --exit-code 0 --severity HIGH,CRITICAL \
+                        --format table -o betech-backend-scan.html \
+                        ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER}
+                """
+                sh """
+                    trivy image --exit-code 0 --severity HIGH,CRITICAL \
+                        --format table -o betech-database-scan.html \
+                        ${DOCKER_IMAGE_DB}:${BUILD_NUMBER}
+                """
             }
         }
-        
-        // This stage publishes the backend artifacts to the backend repository
+
         stage('Publish Backend Artifact to Nexus') {
             steps {
                 dir("${BACKEND_DIR}") {
-                    withMaven(globalMavenSettingsConfig: '', jdk: 'jdk11', maven: 'maven', mavenSettingsConfig: '', traceability: true) {
+                    withMaven(
+                        globalMavenSettingsConfig: '',
+                        jdk: "${JDK_VERSION}",
+                        maven: "${MAVEN_TOOL}",
+                        mavenSettingsConfig: '',
+                        traceability: true
+                    ) {
                         sh 'mvn deploy -DskipTests=true'
                     }
                 }
             }
         }
 
-        // This stage pushes docker images to the remote dockerhub repository
         stage('Push Docker Images') {
             steps {
-               withDockerRegistry(credentialsId: 'dockerhub-creds', url: '') {
+                withDockerRegistry(credentialsId: "${DOCKERHUB_CREDENTIALS}", url: '') {
                     sh "docker push ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER}"
                     sh "docker push ${DOCKER_IMAGE_DB}:${BUILD_NUMBER}"
                 }
             }
         }
-    
-    // Post build alerts  
+    }
+
     post {
-            always {
-                script {
-                    def jobName = env.JOB_NAME
-                    def buildNumber = env.BUILD_NUMBER
-                    def pipelineStatus = currentBuild.result ?: 'UNKNOWN'
-                    def bannerColor = pipelineStatus.toUpperCase() == 'SUCCESS' ? 'green' : 'red'
-                    
-                    def body = """
-                        <html>
-                        <body>
-                        <div style="border: 4px solid ${bannerColor}; padding: 10px;">
-                        <h2>${jobName} - Build ${buildNumber}</h2>
-                        <div style="background-color: ${bannerColor}; padding: 10px;">
-                        <h3 style="color: white;">Pipeline Status: ${pipelineStatus.toUpperCase()}</h3>
-                        </div>
-                        <p>Check the <a href="${BUILD_URL}">console output</a>.</p>
-                        </div>
-                        </body>
-                        </html>
-                    """
-                    
-                    emailext (
-                        subject: "${jobName} - Build ${buildNumber} - ${pipelineStatus.toUpperCase()}",
-                        body: body,
-                        to: 'betechincorporated@gmail.com',
-                        from: 'jenkins@example.com',
-                        replyTo: 'jenkins@example.com',
-                        mimeType: 'text/html',
-                        attachmentsPattern: '*.html'
-                    )
-                }
-                
-                script {
-                archiveArtifacts artifacts: '**/dependency-check-report.xml', allowEmptyArchive: true 
-                }
+        always {
+            script {
+                def jobName = env.JOB_NAME
+                def buildNumber = env.BUILD_NUMBER
+                def pipelineStatus = currentBuild.result ?: 'UNKNOWN'
+                def bannerColor = pipelineStatus.toUpperCase() == 'SUCCESS' ? 'green' : 'red'
+
+                def body = """
+                    <html>
+                    <body>
+                    <div style="border: 4px solid ${bannerColor}; padding: 10px;">
+                    <h2>${jobName} - Build ${buildNumber}</h2>
+                    <div style="background-color: ${bannerColor}; padding: 10px;">
+                    <h3 style="color: white;">Pipeline Status: ${pipelineStatus.toUpperCase()}</h3>
+                    </div>
+                    <p>Check the <a href="${BUILD_URL}">console output</a>.</p>
+                    </div>
+                    </body>
+                    </html>
+                """
+
+                emailext (
+                    subject: "${jobName} - Build ${buildNumber} - ${pipelineStatus.toUpperCase()}",
+                    body: body,
+                    to: 'betechincorporated@gmail.com',
+                    from: 'jenkins@example.com',
+                    replyTo: 'jenkins@example.com',
+                    mimeType: 'text/html',
+                    attachmentsPattern: '*.html'
+                )
             }
 
-            success {
-                slackSend (
-                    channel: "${SLACK_CHANNEL}",
-                    color: '#36a64f',
-                    message: "Build #${BUILD_NUMBER} for ${env.JOB_NAME} succeeded! :white_check_mark:"
-                )
+            script {
+                archiveArtifacts artifacts: '**/dependency-check-report.xml', allowEmptyArchive: true
             }
-            failure {
-                script {
-                    def failedStage = ''
-                    def flowNodes = currentBuild.rawBuild.getExecution().getCurrentHeads()
-                    if (flowNodes && flowNodes.size() > 0) {
-                        failedStage = flowNodes[0].displayName
-                    }
-                    slackSend (
-                        channel: "${SLACK_CHANNEL}",
-                        color: '#FF0000',
-                        message: "Build #${BUILD_NUMBER} for ${env.JOB_NAME} failed in stage: ${failedStage} :x:"
-                    )
+        }
+
+        success {
+            slackSend (
+                channel: "${SLACK_CHANNEL}",
+                color: '#36a64f',
+                message: "Build #${BUILD_NUMBER} for ${env.JOB_NAME} succeeded! :white_check_mark:"
+            )
+        }
+        failure {
+            script {
+                def failedStage = ''
+                def flowNodes = currentBuild.rawBuild.getExecution().getCurrentHeads()
+                if (flowNodes && flowNodes.size() > 0) {
+                    failedStage = flowNodes[0].displayName
                 }
-            }
-            unstable {
                 slackSend (
                     channel: "${SLACK_CHANNEL}",
-                    color: '#FFA500',
-                    message: "Build #${BUILD_NUMBER} for ${env.JOB_NAME} is unstable. :warning:"
+                    color: '#FF0000',
+                    message: "Build #${BUILD_NUMBER} for ${env.JOB_NAME} failed in stage: ${failedStage} :x:"
                 )
             }
-        }    
+        }
+        unstable {
+            slackSend (
+                channel: "${SLACK_CHANNEL}",
+                color: '#FFA500',
+                message: "Build #${BUILD_NUMBER} for ${env.JOB_NAME} is unstable. :warning:"
+            )
+        }
     }
 }
