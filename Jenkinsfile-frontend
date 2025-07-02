@@ -13,7 +13,11 @@ pipeline {
         DOCKERHUB_CREDENTIALS = 'dockerhub-creds'
         NEXUS_URL = 'http://172.31.35.139:8081'
         // Repository where we will upload the artifact
+<<<<<<< HEAD
         NEXUS_REPOSITORY = 'betech-login-frontend'
+=======
+        NEXUS_REPOSITORY = 'betech-login-backend'
+>>>>>>> 242bae2 (removed webpack override)
         // Jenkins credential id to authenticate to Nexus OSS
         NEXUS_CREDENTIAL_ID = 'nexus-creds'
         SLACK_CHANNEL = '#devops-team'
@@ -48,6 +52,7 @@ pipeline {
 
         stage('Frontend Test & Build Artifacts') {
             steps {
+<<<<<<< HEAD
                 withCredentials([
                     usernamePassword(
                         credentialsId: "${NEXUS_CREDENTIAL_ID}",
@@ -64,6 +69,26 @@ pipeline {
                         sh 'npm install'
                         sh 'npm run test || true'
                         sh 'npm run build'
+=======
+                dir("${FRONTEND_DIR}") {
+                    withCredentials([
+                        usernamePassword(
+                            credentialsId: "${NEXUS_CREDENTIAL_ID}",
+                            usernameVariable: 'NEXUS_USER',
+                            passwordVariable: 'NEXUS_PASS'
+                        )
+                    ]) {
+                        nodejs(nodeJSInstallationName: "${NODEJS_NAME}") {
+                            sh """
+                                AUTH=\$(echo -n "$NEXUS_USER:$NEXUS_PASS" | base64)'
+                                echo "registry=${NPM_REGISTRY_URL}" > .npmrc
+                                echo "//${NPM_REGISTRY_URL.replace('http://', '')}:_auth=\$AUTH" >> .npmrc
+                            """
+                            sh 'npm install'
+                            sh 'npm run test || true'
+                            sh 'npm run build'
+                        }
+>>>>>>> 242bae2 (removed webpack override)
                     }
                 }
             }
