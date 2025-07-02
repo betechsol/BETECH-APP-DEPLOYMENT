@@ -44,7 +44,11 @@ pipeline {
 
         stage('Set POM File Distribution Management') {
             steps {
+<<<<<<< HEAD
                 sh 'chmod +x append_distribution_management.sh'
+=======
+                sh 'chmod +x ./betech-login-backend/append_distribution_management.sh'
+>>>>>>> parent of f3e327a (update Set POM File Distribution Management script path)
                 sh './append_distribution_management.sh'
             }
         }
