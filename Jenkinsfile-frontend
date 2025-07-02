@@ -1,3 +1,5 @@
+/* groovylint-disable DuplicateStringLiteral */
+/* groovylint-disable-next-line CompileStatic */
 pipeline {
     agent any
 
@@ -9,11 +11,11 @@ pipeline {
         BUILD_NUMBER = 'v2.0'
         SONARQUBE_SERVER = 'SonarQubeServer'
         DOCKERHUB_CREDENTIALS = 'dockerhub-creds'
-        NEXUS_URL = "http://172.31.35.139:8081"
+        NEXUS_URL = 'http://172.31.35.139:8081'
         // Repository where we will upload the artifact
-        NEXUS_REPOSITORY = "betech-login-backend"
+        NEXUS_REPOSITORY = 'betech-login-backend'
         // Jenkins credential id to authenticate to Nexus OSS
-        NEXUS_CREDENTIAL_ID = "nexus-creds"
+        NEXUS_CREDENTIAL_ID = 'nexus-creds'
         SLACK_CHANNEL = '#devops-team'
         SLACK_CREDENTIALS = 'slack-token-id'
         NODEJS_NAME = 'nodeJS'
@@ -47,8 +49,8 @@ pipeline {
                         )
                     ]) {
                         nodejs(nodeJSInstallationName: "${NODEJS_NAME}") {
-                            sh 'AUTH=$(echo -n "$NEXUS_USER:$NEXUS_PASS" | base64)'
                             sh """
+                                AUTH=\$(echo -n "$NEXUS_USER:$NEXUS_PASS" | base64)'
                                 echo "registry=${NPM_REGISTRY_URL}" > .npmrc
                                 echo "//${NPM_REGISTRY_URL.replace('http://', '')}:_auth=\$AUTH" >> .npmrc
                             """
@@ -103,7 +105,7 @@ pipeline {
         // Wait for quality gate results from SonarQube Scan.
         stage('Wait for QualityGates') {
             steps { 
-                echo "Running Quality Gates to verify the code quality"
+                echo 'Running Quality Gates to verify the code quality'
                 timeout(time: 1, unit: 'MINUTES') {
                     script {
                         def qg = waitForQualityGate()
