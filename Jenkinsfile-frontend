@@ -49,18 +49,11 @@ pipeline {
         stage('Frontend Test & Build Artifacts') {
             steps {
                 dir("${FRONTEND_DIR}") {
-                    withCredentials([
-                        usernamePassword(
-                            credentialsId: "${NEXUS_CREDENTIAL_ID}",
-                            usernameVariable: 'NEXUS_USER',
-                            passwordVariable: 'NEXUS_PASS'
-                        )
-                    ]) {
-                        nodejs(nodeJSInstallationName: "${NODEJS_NAME}") {
-                            sh 'npm install'
-                            sh 'npm run test || true'
-                            sh 'npm run build'
-                        }
+                    nodejs(nodeJSInstallationName: "${NODEJS_NAME}") {
+                        sh 'rm -rf node_modules package-lock.json .npmrc'
+                        sh 'npm install'
+                        sh 'npm run test || true'
+                        sh 'npm run build'
                     }
                 }
             }
