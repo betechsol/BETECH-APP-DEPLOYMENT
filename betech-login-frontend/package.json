@@ -42,7 +42,8 @@
   "overrides": {
     "css-what": "^6.0.1",
     "html-minifier-terser": "^6.1.0",
-    "express": "^4.21.2",
+    "html-minifier": "^3.5.21",
+    "express": "^5.1.0",
     "nth-check": "^2.0.1",
     "postcss": "^8.4.31",
     "webpack-dev-server": "^5.2.1"
