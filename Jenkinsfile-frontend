@@ -13,11 +13,7 @@ pipeline {
         DOCKERHUB_CREDENTIALS = 'dockerhub-creds'
         NEXUS_URL = 'http://172.31.35.139:8081'
         // Repository where we will upload the artifact
-<<<<<<< HEAD
         NEXUS_REPOSITORY = 'betech-login-frontend'
-=======
-        NEXUS_REPOSITORY = 'betech-login-backend'
->>>>>>> 242bae2 (removed webpack override)
         // Jenkins credential id to authenticate to Nexus OSS
         NEXUS_CREDENTIAL_ID = 'nexus-creds'
         SLACK_CHANNEL = '#devops-team'
@@ -52,24 +48,6 @@ pipeline {
 
         stage('Frontend Test & Build Artifacts') {
             steps {
-<<<<<<< HEAD
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: "${NEXUS_CREDENTIAL_ID}",
-                        usernameVariable: 'NEXUS_USER',
-                        passwordVariable: 'NEXUS_PASS'
-                    )
-                ]) {
-                    nodejs(nodeJSInstallationName: "${NODEJS_NAME}") {
-                        sh '''
-                            AUTH=$(echo -n "$NEXUS_USER:$NEXUS_PASS" | base64)
-                            echo "registry=${NPM_REGISTRY_URL}" > .npmrc
-                            echo "//$(echo ${NPM_REGISTRY_URL} | sed 's|http://||'):_auth=$AUTH" >> .npmrc
-                        '''
-                        sh 'npm install'
-                        sh 'npm run test || true'
-                        sh 'npm run build'
-=======
                 dir("${FRONTEND_DIR}") {
                     withCredentials([
                         usernamePassword(
@@ -88,7 +66,6 @@ pipeline {
                             sh 'npm run test || true'
                             sh 'npm run build'
                         }
->>>>>>> 242bae2 (removed webpack override)
                     }
                 }
             }
@@ -96,43 +73,49 @@ pipeline {
 
         stage('Frontend SCA') {
             steps {
-                nodejs(nodeJSInstallationName: "${NODEJS_NAME}") {
-                    sh """
-                        sudo dependency-check.sh \
-                          --project ${SONAR_PROJECT_KEY} \
-                          --scan . \
-                          --exclude ${DEP_CHECK_EXCLUDES} \
-                          --format ${DEP_CHECK_FORMAT} \
-                          --disableYarnAudit
-                    """
+                dir("${FRONTEND_DIR}") {
+                    nodejs(nodeJSInstallationName: "${NODEJS_NAME}") {
+                        sh """
+                            sudo dependency-check.sh \
+                            --project ${SONAR_PROJECT_KEY} \
+                            --scan . \
+                            --exclude ${DEP_CHECK_EXCLUDES} \
+                            --format ${DEP_CHECK_FORMAT} \
+                            --disableYarnAudit
+                        """
+                    }
                 }
             }
         }
 
         stage('SonarQube Scan Frontend') {
             steps {
-                withSonarQubeEnv("${SONARQUBE_SERVER}") {
-                    sh """
-                        sonar-scanner \
-                          -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
-                          -Dsonar.projectName=${SONAR_PROJECT_NAME} \
-                          -Dsonar.projectVersion=${SONAR_PROJECT_VERSION} \
-                          -Dsonar.dependencyCheck.jsonReportPath=dependency-check-report.json \
-                          -Dsonar.dependencyCheck.htmlReportPath=dependency-check-report.html \
-                          -Dsonar.exclusions=${DEP_CHECK_EXCLUDES}
-                    """
+                dir("${FRONTEND_DIR}") {
+                    withSonarQubeEnv("${SONARQUBE_SERVER}") {
+                        sh """
+                            sonar-scanner \
+                            -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                            -Dsonar.projectName=${SONAR_PROJECT_NAME} \
+                            -Dsonar.projectVersion=${SONAR_PROJECT_VERSION} \
+                            -Dsonar.dependencyCheck.jsonReportPath=dependency-check-report.json \
+                            -Dsonar.dependencyCheck.htmlReportPath=dependency-check-report.html \
+                            -Dsonar.exclusions=${DEP_CHECK_EXCLUDES}
+                        """
+                    }
                 }
             }
         }
 
         stage('Wait for QualityGates') {
-            steps { 
-                echo 'Running Quality Gates to verify the code quality'
-                timeout(time: 1, unit: 'MINUTES') {
-                    script {
-                        def qg = waitForQualityGate()
-                        if (qg.status != 'OK') {
-                            error "Pipeline aborted due to quality gate failure: ${qg.status}"
+            dir("${FRONTEND_DIR}") {
+                steps { 
+                    echo 'Running Quality Gates to verify the code quality'
+                    timeout(time: 1, unit: 'MINUTES') {
+                        script {
+                            def qg = waitForQualityGate()
+                            if (qg.status != 'OK') {
+                                error "Pipeline aborted due to quality gate failure: ${qg.status}"
+                            }
                         }
                     }
                 }
@@ -140,18 +123,22 @@ pipeline {
         }
         
         stage('Frontend OWASP Dependency-Check Scan') {
-            steps {
-                dependencyCheck additionalArguments: '', odcInstallation: 'DP-Check'
-                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+            dir("${FRONTEND_DIR}") {
+                steps {
+                    dependencyCheck additionalArguments: '', odcInstallation: 'DP-Check'
+                    dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+                }
             }
         }
 
         stage('Build Docker Images') {
-            steps {
-                withDockerRegistry(credentialsId: "${DOCKERHUB_CREDENTIALS}", url: 'https://index.docker.io/v1/') {
-                    sh 'docker system prune -f'
-                    sh 'docker container prune -f'
-                    sh "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER} ."
+            dir("${FRONTEND_DIR}") {
+                steps {
+                    withDockerRegistry(credentialsId: "${DOCKERHUB_CREDENTIALS}", url: 'https://index.docker.io/v1/') {
+                        sh 'docker system prune -f'
+                        sh 'docker container prune -f'
+                        sh "docker build -t ${DOCKER_IMAGE_FRONTEND}:${BUILD_NUMBER} ."
+                    }
                 }
             }
         }
@@ -167,9 +154,11 @@ pipeline {
         }
         
         stage('Publish Frontend Artifact to Nexus') {
-            steps {
-                nodejs(nodeJSInstallationName: "${NODEJS_NAME}") {
-                    sh 'npm publish || true'
+            dir("${FRONTEND_DIR}") {
+                steps {
+                    nodejs(nodeJSInstallationName: "${NODEJS_NAME}") {
+                        sh 'npm publish || true'
+                    }
                 }
             }
         }

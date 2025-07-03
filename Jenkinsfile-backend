@@ -6,6 +6,7 @@ pipeline {
         REPO_URL = 'https://github.com/betechsol/BETECH-APP-DEPLOYMENT.git'
         BRANCH = 'main'
         NEXUS_REPOSITORY = 'betech-login-backend'
+        BACKEND_DIR = 'betech-login-backend'
         DB_DIR = 'betech-postgresql-db'
         DOCKER_IMAGE_BACKEND = 'betechinc/betech-app-deployment_betechnet-backend'
         BUILD_NUMBER = 'v2.0'
@@ -35,7 +36,8 @@ pipeline {
                     userRemoteConfigs: [[url: "${REPO_URL}"]],
                     extensions: [
                         [$class: 'SparseCheckoutPaths', sparseCheckoutPaths: [
-                            [path: 'betech-login-backend']
+                            [path: 'betech-login-backend'],
+                            [path: 'betech-postgresql-db']
                         ]]
                     ]
                 ])
@@ -44,83 +46,89 @@ pipeline {
 
         stage('Set POM File Distribution Management') {
             steps {
-<<<<<<< HEAD
-                sh 'chmod +x append_distribution_management.sh'
-=======
-                sh 'chmod +x ./betech-login-backend/append_distribution_management.sh'
->>>>>>> parent of f3e327a (update Set POM File Distribution Management script path)
-                sh './append_distribution_management.sh'
+                dir("${BACKEND_DIR}") {
+                    sh 'chmod +x append_distribution_management.sh'
+                    sh './append_distribution_management.sh'
+                }
             }
         }
 
         stage('Backend Test & Build Artifacts') {
             steps {
-                withMaven(
-                    globalMavenSettingsConfig: "${MAVEN_SETTINGS}",
-                    jdk: "${JDK_VERSION}",
-                    maven: "${MAVEN_TOOL}",
-                    mavenSettingsConfig: '',
-                    traceability: true
-                ) {
-                    sh '''
-                        mvn clean test
-                        mvn clean package -DskipTests
-                    '''
+                dir("${BACKEND_DIR}") {
+                    withMaven(
+                        globalMavenSettingsConfig: "${MAVEN_SETTINGS}",
+                        jdk: "${JDK_VERSION}",
+                        maven: "${MAVEN_TOOL}",
+                        mavenSettingsConfig: '',
+                        traceability: true
+                    ) {
+                        sh '''
+                            mvn clean test
+                            mvn clean package -DskipTests
+                        '''
+                    }
                 }
             }
         }
 
         stage('Backend Code Coverage') {
             steps {
-                withMaven(
-                    globalMavenSettingsConfig: "${MAVEN_SETTINGS}",
-                    jdk: "${JDK_VERSION}",
-                    maven: "${MAVEN_TOOL}",
-                    mavenSettingsConfig: '',
-                    traceability: true
-                ) {
-                    sh 'mvn jacoco:report'
+                dir("${BACKEND_DIR}") {
+                    withMaven(
+                        globalMavenSettingsConfig: "${MAVEN_SETTINGS}",
+                        jdk: "${JDK_VERSION}",
+                        maven: "${MAVEN_TOOL}",
+                        mavenSettingsConfig: '',
+                        traceability: true
+                    ) {
+                        sh 'mvn jacoco:report'
+                    }
                 }
             }
         }
 
         stage('Backend SCA') {
             steps {
-                withMaven(
-                    globalMavenSettingsConfig: "${MAVEN_SETTINGS}",
-                    jdk: "${JDK_VERSION}",
-                    maven: "${MAVEN_TOOL}",
-                    mavenSettingsConfig: '',
-                    traceability: true
-                ) {
-                    sh """
-                        mvn org.owasp:dependency-check-maven:check \
-                            -Dformat=${DEP_CHECK_FORMAT} \
-                            -Dexcludes="${DEP_CHECK_EXCLUDES}"
-                    """
+                dir("${BACKEND_DIR}") {
+                    withMaven(
+                        globalMavenSettingsConfig: "${MAVEN_SETTINGS}",
+                        jdk: "${JDK_VERSION}",
+                        maven: "${MAVEN_TOOL}",
+                        mavenSettingsConfig: '',
+                        traceability: true
+                    ) {
+                        sh """
+                            mvn org.owasp:dependency-check-maven:check \
+                                -Dformat=${DEP_CHECK_FORMAT} \
+                                -Dexcludes="${DEP_CHECK_EXCLUDES}"
+                        """
+                    }
                 }
             }
         }
 
         stage('SonarQube Scan Backend') {
             steps {
-                withMaven(
-                    globalMavenSettingsConfig: "${MAVEN_SETTINGS}",
-                    jdk: "${JDK_VERSION}",
-                    maven: "${MAVEN_TOOL}",
-                    mavenSettingsConfig: '',
-                    traceability: true
-                ) {
-                    withSonarQubeEnv("${SONARQUBE_SERVER}") {
-                        sh """
-                            mvn sonar:sonar \
-                              -Dsonar.dependencyCheck.jsonReportPath=target/dependency-check-report.json \
-                              -Dsonar.dependencyCheck.htmlReportPath=target/dependency-check-report.html \
-                              -Dsonar.exclusions=${DEP_CHECK_EXCLUDES} \
-                              -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
-                              -Dsonar.projectName=${SONAR_PROJECT_NAME} \
-                              -Dsonar.projectVersion=${SONAR_PROJECT_VERSION}
-                        """
+                dir("${BACKEND_DIR}") {
+                    withMaven(
+                        globalMavenSettingsConfig: "${MAVEN_SETTINGS}",
+                        jdk: "${JDK_VERSION}",
+                        maven: "${MAVEN_TOOL}",
+                        mavenSettingsConfig: '',
+                        traceability: true
+                    ) {
+                        withSonarQubeEnv("${SONARQUBE_SERVER}") {
+                            sh """
+                                mvn sonar:sonar \
+                                -Dsonar.dependencyCheck.jsonReportPath=target/dependency-check-report.json \
+                                -Dsonar.dependencyCheck.htmlReportPath=target/dependency-check-report.html \
+                                -Dsonar.exclusions=${DEP_CHECK_EXCLUDES} \
+                                -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                                -Dsonar.projectName=${SONAR_PROJECT_NAME} \
+                                -Dsonar.projectVersion=${SONAR_PROJECT_VERSION}
+                            """
+                        }
                     }
                 }
             }
@@ -128,12 +136,14 @@ pipeline {
 
         stage('QualityGates') {
             steps {
-                echo 'Running Quality Gates to verify the code quality'
-                timeout(time: 1, unit: 'MINUTES') {
-                    script {
-                        def qg = waitForQualityGate()
-                        if (qg.status != 'OK') {
-                            error "Pipeline aborted due to quality gate failure: ${qg.status}"
+                dir("${BACKEND_DIR}") {
+                    echo 'Running Quality Gates to verify the code quality'
+                    timeout(time: 1, unit: 'MINUTES') {
+                        script {
+                            def qg = waitForQualityGate()
+                            if (qg.status != 'OK') {
+                                error "Pipeline aborted due to quality gate failure: ${qg.status}"
+                            }
                         }
                     }
                 }
@@ -142,8 +152,10 @@ pipeline {
 
         stage('Backend OWASP Dependency-Check Scan') {
             steps {
-                dependencyCheck additionalArguments: '', odcInstallation: 'DP-Check'
-                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+                dir("${BACKEND_DIR}") {
+                    dependencyCheck additionalArguments: '', odcInstallation: 'DP-Check'
+                    dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+                }
             }
         }
 
@@ -151,9 +163,13 @@ pipeline {
             steps {
                 sh 'docker system prune -f'
                 sh 'docker container prune -f'
-                withDockerRegistry(credentialsId: "${DOCKERHUB_CREDENTIALS}", url: '') {
-                    sh "docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER} ."
-                    dir("${DB_DIR}") {
+                dir("${BACKEND_DIR}") {
+                    withDockerRegistry(credentialsId: "${DOCKERHUB_CREDENTIALS}", url: '') {
+                        sh "docker build -t ${DOCKER_IMAGE_BACKEND}:${BUILD_NUMBER} ."
+                    }
+                }
+                dir("${DB_DIR}") {
+                    withDockerRegistry(credentialsId: "${DOCKERHUB_CREDENTIALS}", url: '') {
                         sh "docker build -t ${DOCKER_IMAGE_DB}:${BUILD_NUMBER} ."
                     }
                 }
@@ -177,14 +193,16 @@ pipeline {
 
         stage('Publish Backend Artifact to Nexus') {
             steps {
-                withMaven(
-                    globalMavenSettingsConfig: '',
-                    jdk: "${JDK_VERSION}",
-                    maven: "${MAVEN_TOOL}",
-                    mavenSettingsConfig: '',
-                    traceability: true
-                ) {
-                    sh 'mvn deploy -DskipTests=true'
+                dir("${BACKEND_DIR}") {
+                    withMaven(
+                        globalMavenSettingsConfig: '',
+                        jdk: "${JDK_VERSION}",
+                        maven: "${MAVEN_TOOL}",
+                        mavenSettingsConfig: '',
+                        traceability: true
+                    ) {
+                        sh 'mvn deploy -DskipTests=true'
+                    }
                 }
             }
         }
