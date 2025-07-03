@@ -50,7 +50,7 @@ pipeline {
             steps {
                 dir("${FRONTEND_DIR}") {
                     nodejs(nodeJSInstallationName: "${NODEJS_NAME}") {
-                        sh 'rm -rf node_modules package-lock.json .npmrc'
+                        sh 'rm -f .npmrc'
                         sh 'npm install'
                         sh 'npm run test || true'
                         sh 'npm run build'
