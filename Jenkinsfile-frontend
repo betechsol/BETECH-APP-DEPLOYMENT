@@ -62,7 +62,6 @@ pipeline {
         stage('Frontend SCA') {
             steps {
                 dir("${FRONTEND_DIR}") {
-                    /* groovylint-disable-next-line NestedBlockDepth */
                     nodejs(nodeJSInstallationName: "${NODEJS_NAME}") {
                         sh """
                             sudo dependency-check.sh \
@@ -70,7 +69,8 @@ pipeline {
                             --scan . \
                             --exclude ${DEP_CHECK_EXCLUDES} \
                             --format ${DEP_CHECK_FORMAT} \
-                            --disableYarnAudit
+                            --disableYarnAudit \
+                            --suppression dependency-check-suppress.xml
                         """
                     }
                 }
@@ -111,10 +111,10 @@ pipeline {
             }
         }
         
-        stage('Frontend OWASP Dependency-Check Scan') {
+        stage('Publish Frontend OWASP Dependency-Check Scan') {
             steps {
                 dir("${FRONTEND_DIR}") {
-                    dependencyCheck additionalArguments: '', odcInstallation: 'DP-Check'
+                    // dependencyCheck additionalArguments: '', odcInstallation: 'DP-Check'
                     dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
                 }
             }
