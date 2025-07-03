@@ -1,4 +1,4 @@
-/* groovylint-disable DuplicateStringLiteral */
+/* groovylint-disable DuplicateStringLiteral, NestedBlockDepth */
 /* groovylint-disable-next-line CompileStatic */
 pipeline {
     agent { label 'Build Server' }
@@ -69,6 +69,7 @@ pipeline {
         stage('Frontend SCA') {
             steps {
                 dir("${FRONTEND_DIR}") {
+                    /* groovylint-disable-next-line NestedBlockDepth */
                     nodejs(nodeJSInstallationName: "${NODEJS_NAME}") {
                         sh """
                             sudo dependency-check.sh \
@@ -103,14 +104,12 @@ pipeline {
 
         stage('Wait for QualityGates') {
             steps {
-                dir("${FRONTEND_DIR}") {
-                    echo 'Running Quality Gates to verify the code quality'
-                    timeout(time: 1, unit: 'MINUTES') {
-                        script {
-                            def qg = waitForQualityGate()
-                            if (qg.status != 'OK') {
-                                error "Pipeline aborted due to quality gate failure: ${qg.status}"
-                            }
+                echo 'Running Quality Gates to verify the code quality'
+                timeout(time: 1, unit: 'MINUTES') {
+                    script {
+                        def qg = waitForQualityGate()
+                        if (qg.status != 'OK') {
+                            error "Pipeline aborted due to quality gate failure: ${qg.status}"
                         }
                     }
                 }
