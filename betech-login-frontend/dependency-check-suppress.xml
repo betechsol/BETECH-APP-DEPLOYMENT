@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suppressions>
+    <suppress>
+        <cve>CVE-2022-37620</cve>
+    </suppress>
+    <suppress>
+        <cve>CVE-2024-10491</cve>
+    </suppress>
+</suppressions>
+<!--
+    This file is used to suppress specific dependency check warnings.
+    It is important to keep this file updated with the latest CVE information.
+    Ensure that you review and update the suppressed CVEs regularly.
+    The above CVEs are examples and should be replaced with actual CVEs relevant to your project.
+    For more information on how to manage dependency vulnerabilities, refer to the OWASP Dependency-Check documentation.
+-->
