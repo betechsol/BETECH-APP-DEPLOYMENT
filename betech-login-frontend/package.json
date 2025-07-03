@@ -41,8 +41,6 @@
   "proxy": "http://localhost:8080",
   "overrides": {
     "css-what": "^3.4.3",
-    "html-minifier-terser": "^6.1.1",
-    "nth-check": "^2.0.1",
-    "express": "^4.21.3"
+    "html-minifier-terser": "^6.1.1"
   }
 }
