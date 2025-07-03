@@ -26,7 +26,7 @@ pipeline {
         // This stage scans the project directory for vulnerabilities using Trivy.
         stage('Project Trivy File Scan') {
             steps {
-                    sh "trivy fs . -f table -o ${TRIVY_REPORT}"
+                    sh "trivy fs . --report summary -f table -o ${TRIVY_REPORT}"
             }
         }
 
