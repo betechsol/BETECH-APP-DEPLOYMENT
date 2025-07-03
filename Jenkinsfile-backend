@@ -108,6 +108,15 @@ pipeline {
             }
         }
 
+        stage('Publish Backend OWASP Dependency-Check Scan') {
+            steps {
+                dir("${BACKEND_DIR}") {
+                    // dependencyCheck additionalArguments: '', odcInstallation: 'DP-Check'
+                    dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+                }
+            }
+        }
+
         stage('SonarQube Scan Backend') {
             steps {
                 dir("${BACKEND_DIR}") {
@@ -146,15 +155,6 @@ pipeline {
                             }
                         }
                     }
-                }
-            }
-        }
-
-        stage('Backend OWASP Dependency-Check Scan') {
-            steps {
-                dir("${BACKEND_DIR}") {
-                    dependencyCheck additionalArguments: '', odcInstallation: 'DP-Check'
-                    dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
                 }
             }
         }
