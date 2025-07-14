@@ -104,17 +104,35 @@ fix_helm_deployments() {
     # Get cluster information
     VPC_ID=$(aws eks describe-cluster --name $CLUSTER_NAME --region $REGION --query 'cluster.resourcesVpcConfig.vpcId' --output text)
     
-    # Install AWS Load Balancer Controller
+    # Get the clean role ARN for ALB controller
+    echo "🔍 Getting ALB controller IAM role ARN..."
+    ALB_ROLE_ARN=$(aws iam list-roles --query 'Roles[?contains(RoleName, `AmazonEKSLoadBalancerControllerRole`)].Arn' --output text | tr -d '>\n\r\t' | sed 's/^=//')
+    echo "Found ALB Role ARN: $ALB_ROLE_ARN"
+    
+    # Install AWS Load Balancer Controller with proper role annotation
     echo "🔧 Installing AWS Load Balancer Controller..."
     helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
         -n kube-system \
         --set clusterName=$CLUSTER_NAME \
         --set serviceAccount.create=true \
         --set serviceAccount.name=aws-load-balancer-controller \
+        --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="$ALB_ROLE_ARN" \
         --set region=$REGION \
         --set vpcId=$VPC_ID \
         --timeout=10m \
         --wait
+    
+    # Verify and fix service account annotation
+    echo "🔧 Verifying ALB controller service account annotation..."
+    CURRENT_ANNOTATION=$(kubectl get serviceaccount aws-load-balancer-controller -n kube-system -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}' 2>/dev/null || echo "")
+    
+    if [[ "$CURRENT_ANNOTATION" != "$ALB_ROLE_ARN" ]] || [[ "$CURRENT_ANNOTATION" == *$'\n'* ]] || [[ "$CURRENT_ANNOTATION" == *$'\e'* ]]; then
+        echo "🔨 Fixing malformed service account annotation..."
+        kubectl annotate serviceaccount aws-load-balancer-controller -n kube-system eks.amazonaws.com/role-arn="$ALB_ROLE_ARN" --overwrite
+        echo "🔄 Restarting ALB controller to pick up corrected annotation..."
+        kubectl rollout restart deployment aws-load-balancer-controller -n kube-system
+        kubectl rollout status deployment aws-load-balancer-controller -n kube-system --timeout=300s
+    fi
     
     # Install Metrics Server
     echo "📊 Installing Metrics Server..."
@@ -210,7 +228,7 @@ build_and_push_images() {
     echo "🐳 STEP 3: Building and Pushing Docker Images"
     echo "=============================================="
     
-    cd "$SCRIPT_DIR/.."
+    cd "$SCRIPT_DIR"
     
     # Login to ECR
     echo "🔑 Logging into ECR..."
@@ -219,28 +237,28 @@ build_and_push_images() {
     # Build and push backend
     echo "🔨 Building backend image..."
     cd betech-login-backend
-    docker build -t betech-backend .
-    docker tag betech-backend:latest $AWS_ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/betech-backend:latest
+    docker build -t betech-login-backend .
+    docker tag betech-login-backend:latest $AWS_ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/betech-backend:latest
     docker push $AWS_ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/betech-backend:latest
     echo "✅ Backend image pushed"
     
     # Build and push frontend  
     echo "🔨 Building frontend image..."
     cd ../betech-login-frontend
-    docker build -t betech-frontend .
-    docker tag betech-frontend:latest $AWS_ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/betech-frontend:latest
+    docker build -t betech-login-frontend .
+    docker tag betech-login-frontend:latest $AWS_ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/betech-frontend:latest
     docker push $AWS_ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/betech-frontend:latest
     echo "✅ Frontend image pushed"
     
     # Build and push postgres
     echo "🔨 Building postgres image..."
     cd ../betech-postgresql-db
-    docker build -t betech-postgres .
-    docker tag betech-postgres:latest $AWS_ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/betech-postgres:latest
+    docker build -t betech-login-postgres .
+    docker tag betech-login-postgres:latest $AWS_ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/betech-postgres:latest
     docker push $AWS_ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/betech-postgres:latest
     echo "✅ Postgres image pushed"
     
-    cd "$SCRIPT_DIR/.."
+    cd "$SCRIPT_DIR"
     echo "✅ All Docker images built and pushed"
 }
 
@@ -250,7 +268,7 @@ deploy_application() {
     echo "🚀 STEP 4: Deploying Application"
     echo "================================"
     
-    cd "$SCRIPT_DIR/.."
+    cd "$SCRIPT_DIR"
     
     # Create postgres deployment with emptyDir (fixes storage issues)
     echo "🗄️  Deploying PostgreSQL..."

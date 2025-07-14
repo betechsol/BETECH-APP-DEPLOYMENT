@@ -125,29 +125,74 @@ execute_teardown() {
     
     # Remove application components
     print_action "Removing application components..."
-    kubectl delete ingress betechnet-ingress --ignore-not-found=true 2>/dev/null || true
-    print_status "Waiting 30 seconds for ALB deletion..."
-    sleep 30
     
-    kubectl delete deployment betechnet-frontend betechnet-backend betechnet-postgres --ignore-not-found=true 2>/dev/null || true
-    kubectl delete service betechnet-frontend betechnet-backend betechnet-postgres --ignore-not-found=true 2>/dev/null || true
-    kubectl delete secret betechnet-secrets --ignore-not-found=true 2>/dev/null || true
-    kubectl delete pvc postgres-pvc --ignore-not-found=true 2>/dev/null || true
+    # Delete deployments first (stops traffic to services)
+    print_status "Deleting deployments..."
+    kubectl delete deployment betechnet-frontend betechnet-backend betechnet-postgres --ignore-not-found=true --timeout=30s 2>/dev/null || true
+    
+    # Delete services
+    print_status "Deleting services..."
+    kubectl delete service betechnet-frontend betechnet-backend betechnet-postgres --ignore-not-found=true --timeout=30s 2>/dev/null || true
+    
+    # Delete secrets and PVCs
+    print_status "Deleting secrets and storage..."
+    kubectl delete secret betechnet-secrets --ignore-not-found=true --timeout=30s 2>/dev/null || true
+    kubectl delete pvc postgres-pvc --ignore-not-found=true --timeout=30s 2>/dev/null || true
+    
+    # Delete ingress (ALB) - this can take time
+    print_status "Deleting ingress (ALB)..."
+    kubectl delete ingress betechnet-ingress --ignore-not-found=true --timeout=60s 2>/dev/null || {
+        print_warning "Ingress deletion timed out, force deleting..."
+        kubectl delete ingress betechnet-ingress --force --grace-period=0 --ignore-not-found=true 2>/dev/null || true
+    }
+    
+    # Wait for ALB cleanup with timeout
+    print_status "Waiting for ALB cleanup (max 2 minutes)..."
+    local wait_count=0
+    while kubectl get ingress betechnet-ingress >/dev/null 2>&1 && [ $wait_count -lt 24 ]; do
+        echo -n "."
+        sleep 5
+        ((wait_count++))
+    done
+    echo ""
+    
+    if kubectl get ingress betechnet-ingress >/dev/null 2>&1; then
+        print_warning "Ingress still exists, but continuing teardown..."
+    else
+        print_status "Ingress successfully deleted"
+    fi
     
     # Remove controllers
-    print_action "Removing AWS Load Balancer Controller..."
+    print_action "Removing Helm releases..."
+    
+    # Remove Helm releases with timeout
+    print_status "Removing AWS Load Balancer Controller..."
+    helm uninstall aws-load-balancer-controller -n kube-system --timeout=60s 2>/dev/null || {
+        print_warning "Helm uninstall timed out, forcing cleanup..."
+        kubectl delete deployment aws-load-balancer-controller -n kube-system --force --grace-period=0 2>/dev/null || true
+    }
+    
+    print_status "Removing Metrics Server..."
+    helm uninstall metrics-server -n kube-system --timeout=60s 2>/dev/null || true
+    
+    print_status "Removing Cluster Autoscaler..."
+    helm uninstall cluster-autoscaler -n kube-system --timeout=60s 2>/dev/null || true
+    
+    # Clean up IAM service accounts
+    print_action "Removing IAM service accounts..."
     eksctl delete iamserviceaccount \
         --cluster=$CLUSTER_NAME \
         --namespace=kube-system \
         --name=aws-load-balancer-controller \
-        --region=$REGION 2>/dev/null || true
+        --region=$REGION \
+        --timeout=60s 2>/dev/null || true
     
-    print_action "Removing EBS CSI Driver..."
     eksctl delete iamserviceaccount \
         --cluster=$CLUSTER_NAME \
         --namespace=kube-system \
         --name=ebs-csi-controller-sa \
-        --region=$REGION 2>/dev/null || true
+        --region=$REGION \
+        --timeout=60s 2>/dev/null || true
     
     # Clean up IAM policies
     print_action "Cleaning up additional IAM policies..."
