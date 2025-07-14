@@ -1,6 +1,6 @@
-# BETECH App Deployment
+# BETECH EKS Deployment Scripts
 
-This repository contains all components and deployment instructions for the BETECH Login Application, including the Spring Boot backend, React frontend, and PostgreSQL database setup. The deployment is containerized using Docker and orchestrated with Docker Compose.
+This repository contains production-ready deployment scripts for the BETECH application on Amazon EKS, incorporating all fixes and lessons learned from troubleshooting.
 
 ## Project Structure
 
@@ -10,10 +10,27 @@ BETECH-APP-DEPLOYMENT
 │   └── README.md
 ├── betech-login-frontend     # React frontend application
 │   └── README.md
-├── docker-compose.yml        # Multi-container orchestration
-├── betech-postgresql-db      # (Optional) PostgreSQL setup scripts
+├── betech-postgresql-db      # PostgreSQL database setup
 │   └── README.md
-└── README.md                 # This file
+├── eks-deployment            # Terraform infrastructure code
+│   ├── main.tf
+│   ├── variables.tf
+│   ├── terraform.tfvars
+│   ├── deploy.sh
+│   └── ...
+├── manifests                 # Kubernetes deployment manifests
+│   ├── backend-deployment.yaml
+│   ├── frontend-deployment.yaml
+│   ├── postgres-deployment.yaml
+│   ├── ingress.yaml
+│   ├── secrets.yaml
+│   └── ...
+├── persistent-volume-claim   # Storage configuration
+│   └── manifests/
+├── docker-compose.yml        # Local development setup
+├── deploy-eks.sh            # Main deployment script
+├── validate-deployment.sh   # Validation script
+└── README.md                # This file
 ```
 
 ## Components

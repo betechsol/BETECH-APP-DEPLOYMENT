@@ -9,7 +9,7 @@ spec:
   resources:
     requests:
       storage: 10Gi
-  storageClassName: betech-storage-class
+  storageClassName: gp2
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -25,16 +25,17 @@ spec:
       labels:
         app: betechnet-postgres
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: betechnet-postgres
-          image: postgres:14
+          image: 374965156099.dkr.ecr.us-west-2.amazonaws.com/betech-postgres:latest
           env:
             - name: POSTGRES_DB
-              value: BETECH_DB
+              value: betech_db
             - name: POSTGRES_USER
               value: admin
             - name: POSTGRES_PASSWORD
-              value: admmin123
+              value: admin123
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
           ports:
@@ -46,16 +47,15 @@ spec:
             requests:
               memory: "512Mi"
               cpu: "250m"
+              ephemeral-storage: "1Gi"
             limits:
               memory: "1Gi"
               cpu: "500m"
+              ephemeral-storage: "2Gi"
       volumes:
         - name: postgres-storage
           persistentVolumeClaim:
             claimName: postgres-pvc
-        - name: initdb
-          configMap:
-            name: postgres-initdb
 ---
 apiVersion: v1
 kind: Service

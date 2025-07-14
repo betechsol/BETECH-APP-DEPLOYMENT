@@ -1,0 +1,72 @@
+# EKS Cluster Configuration using eksctl
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: betech-eks-cluster
+  region: us-west-2
+  version: "1.28"
+
+# VPC Configuration - Let eksctl create VPC automatically
+# vpc:
+#   cidr: "10.0.0.0/16"
+
+# IAM Configuration
+iam:
+  withOIDC: true
+  serviceAccounts:
+    - metadata:
+        name: aws-load-balancer-controller
+        namespace: kube-system
+      wellKnownPolicies:
+        awsLoadBalancerController: true
+    - metadata:
+        name: ebs-csi-controller-sa
+        namespace: kube-system
+      wellKnownPolicies:
+        ebsCSIController: true
+
+# Node Groups
+nodeGroups:
+  - name: betech-workers
+    instanceType: t3.medium
+    desiredCapacity: 2
+    minSize: 1
+    maxSize: 4
+    privateNetworking: true
+    volumeSize: 20
+    volumeType: gp3
+    amiFamily: AmazonLinux2
+    iam:
+      withAddonPolicies:
+        ebs: true
+        efs: true
+        awsLoadBalancerController: true
+        autoScaler: true
+        cloudWatch: true
+    ssh:
+      allow: false
+    tags:
+      Environment: production
+      Project: betech-app
+      ManagedBy: eksctl
+
+# Add-ons
+addons:
+  - name: vpc-cni
+    version: latest
+  - name: coredns
+    version: latest
+  - name: kube-proxy
+    version: latest
+  - name: aws-ebs-csi-driver
+    version: latest
+    serviceAccountRoleARN: arn:aws:iam::374965156099:role/AmazonEKS_EBS_CSI_DriverRole
+
+# CloudWatch Logging
+cloudWatch:
+  clusterLogging:
+    enableTypes: 
+      - "audit"
+      - "authenticator" 
+      - "controllerManager"

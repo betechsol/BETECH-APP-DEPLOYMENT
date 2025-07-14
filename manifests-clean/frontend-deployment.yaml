@@ -4,7 +4,7 @@ kind: Deployment
 metadata:
   name: betechnet-frontend
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       app: betechnet-frontend
@@ -13,35 +13,25 @@ spec:
       labels:
         app: betechnet-frontend
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: betechnet-frontend
-          image: betechinc/betech-app-deployment_betechnet-frontend:v1.2
+          image: 374965156099.dkr.ecr.us-west-2.amazonaws.com/betech-frontend:latest
           ports:
             - containerPort: 3000
           env:
             - name: REACT_APP_API_URL
-              value: http://backend:8080
+              value: https://betech-app.betechsol.com/api
           resources:
             requests:
               memory: "128Mi"
               cpu: "100m"
+              ephemeral-storage: "512Mi"
             limits:
               memory: "256Mi"
               cpu: "250m"
+              ephemeral-storage: "1Gi"
 ---
-apiVersion: v1
-kind: Service
-metadata:
-  name: betechnet-frontend
-spec:
-  selector:
-    app: betechnet-frontend
-  ports:
-    - port: 3000
-      targetPort: 3000
-      nodePort: 32180
-  type: NodePort
-
 # apiVersion: v1
 # kind: Service
 # metadata:
@@ -52,4 +42,17 @@ spec:
 #   ports:
 #     - port: 3000
 #       targetPort: 3000
-#   type: LoadBalancer
+#       nodePort: 32180
+#   type: NodePort
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: betechnet-frontend
+spec:
+  selector:
+    app: betechnet-frontend
+  ports:
+    - port: 3000
+      targetPort: 3000
+  type: ClusterIP

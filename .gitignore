@@ -1,0 +1,14 @@
+.terraform/
+# Local .terraform directories
+.terraform/*
+!.terraform/modules/
+!.terraform/environment
+.terraform/environment
+# Local .terraform directories
+.terraform.lock.hcl
+# Local .terraform directories
+.terraform.tfstate
+# Local .terraform directories
+.terraform.tfstate.backup
+# Local .terraform directories
+.terraform.tfvars
