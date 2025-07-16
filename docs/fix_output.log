@@ -1,0 +1,15 @@
+[0;34m[2025-07-14 12:02:44] 🔧 BETECH EKS ALB Controller Permissions Verification & Auto-Fix[0m
+==================================================================
+[0;34m[2025-07-14 12:02:48] Cluster: betech-eks-cluster, Region: us-west-2[0m
+[0;34m[2025-07-14 12:02:48] 🔍 Verifying OIDC trust policy format...[0m
+[0;32m✅ OIDC trust policy format is correct[0m
+[0;34m[2025-07-14 12:02:53] 🔍 Verifying IAM permissions for AWS Load Balancer Controller...[0m
+[0;32m✅ All required IAM permissions are present[0m
+[0;34m[2025-07-14 12:02:58] � Verifying EKS security group tags...[0m
+[0;32m✅ Security group has correct kubernetes.io/cluster tag[0m
+[0;34m[2025-07-14 12:03:01] 🔍 Verifying security group ingress rules for backend pod access...[0m
+[0;32m✅ Security group allows all traffic (includes backend port access)[0m
+[0;34m[2025-07-14 12:03:05] 🔍 Verifying AWS Load Balancer Controller deployment...[0m
+[0;32m✅ AWS Load Balancer Controller is deployed and running (2 pods ready)[0m
+[0;34m[2025-07-14 12:03:07] 🔍 Verifying service account IAM role annotation...[0m
+[1;33m⚠️  Service account missing IAM role annotation[0m
