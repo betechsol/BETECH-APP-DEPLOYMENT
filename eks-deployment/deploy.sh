@@ -88,7 +88,30 @@ apply_terraform() {
     
     # Fix EKS cluster access for current IAM role
     print_status "Setting up EKS cluster access..."
-    CURRENT_ROLE_ARN=$(aws sts get-caller-identity --query 'Arn' --output text | sed 's/:assumed-role\/\([^\/]*\)\/.*/:role\/\1/')
+    CALLER_ARN=$(aws sts get-caller-identity --query 'Arn' --output text)
+    
+    # Extract the correct IAM role ARN
+    if echo "$CALLER_ARN" | grep -q "assumed-role"; then
+        # If it's an assumed role, extract the role name and construct the role ARN
+        ROLE_NAME=$(echo "$CALLER_ARN" | cut -d'/' -f2)
+        ACCOUNT_ID=$(echo "$CALLER_ARN" | cut -d':' -f5)
+        CURRENT_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}"
+    else
+        # If it's already a role ARN, use it as is
+        CURRENT_ROLE_ARN="$CALLER_ARN"
+    fi
+    
+    print_status "Using IAM role ARN: $CURRENT_ROLE_ARN"
+    
+    # Clean up any existing incorrect access entries (STS format)
+    if echo "$CALLER_ARN" | grep -q "assumed-role"; then
+        STS_ARN=$(echo "$CALLER_ARN" | sed 's/:assumed-role\/\([^\/]*\)\/.*/:role\/\1/')
+        print_status "Cleaning up any incorrect access entries..."
+        aws eks delete-access-entry \
+            --cluster-name betech-eks-cluster \
+            --principal-arn "$STS_ARN" \
+            --region us-west-2 2>/dev/null || echo "No incorrect access entry to clean up"
+    fi
     
     # Add current IAM role to EKS cluster access entries
     print_status "Adding IAM role to EKS cluster access entries..."
@@ -109,8 +132,24 @@ apply_terraform() {
     # Update kubeconfig again after access setup
     aws eks update-kubeconfig --region us-west-2 --name betech-eks-cluster
     
+    # Verify kubectl access before proceeding
+    print_status "Verifying kubectl access..."
+    for i in {1..10}; do
+        if kubectl get nodes &> /dev/null; then
+            print_status "kubectl access verified successfully"
+            break
+        elif [ $i -eq 10 ]; then
+            print_error "Failed to establish kubectl access after 10 attempts"
+            print_error "Please check your IAM permissions and EKS cluster configuration"
+            exit 1
+        else
+            echo "Waiting for kubectl access... (attempt $i/10)"
+            sleep 10
+        fi
+    done
+    
     # Wait for cluster to be ready
-    print_status "Waiting for cluster to be ready..."
+    print_status "Waiting for cluster nodes to be ready..."
     kubectl wait --for=condition=ready nodes --all --timeout=300s
 }
 
