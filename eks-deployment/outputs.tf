@@ -53,21 +53,17 @@ output "vpc_cidr_block" {
 
 output "ecr_repository_urls" {
   description = "ECR repository URLs"
-  value = {
-    frontend = aws_ecr_repository.betech_frontend.repository_url
-    backend  = aws_ecr_repository.betech_backend.repository_url
-    postgres = aws_ecr_repository.betech_postgres.repository_url
-  }
+  value       = module.ecr.repository_urls
 }
 
 output "load_balancer_controller_role_arn" {
   description = "ARN of the AWS Load Balancer Controller IAM role"
-  value       = aws_iam_role.aws_load_balancer_controller_role.arn
+  value       = module.iam.aws_load_balancer_controller_role_arn
 }
 
 output "ebs_csi_driver_role_arn" {
   description = "ARN of the EBS CSI Driver IAM role"
-  value       = aws_iam_role.ebs_csi_driver_role.arn
+  value       = module.iam.ebs_csi_driver_role_arn
 }
 
 output "kubectl_config_command" {

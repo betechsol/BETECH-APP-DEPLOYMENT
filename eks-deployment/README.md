@@ -14,6 +14,57 @@ The Terraform deployment creates:
 - **Security Groups** with appropriate ingress/egress rules
 - **NAT Gateways** for private subnet internet access
 
+## 📁 Project Structure
+
+The Terraform configuration is organized into reusable modules:
+
+```
+eks-deployment/
+├── main.tf                    # Root module calling all sub-modules
+├── variables.tf               # Input variables
+├── outputs.tf                 # Output values
+├── providers.tf               # Provider configurations
+├── backend.tf                 # Remote state configuration
+├── terraform.tfvars           # Variable values
+└── modules/
+    ├── vpc/                   # VPC and networking resources
+    │   ├── main.tf            # VPC module, subnets, security groups
+    │   ├── variables.tf       # VPC input variables
+    │   └── outputs.tf         # VPC outputs (IDs, CIDR blocks)
+    ├── eks/                   # EKS cluster and node groups
+    │   ├── main.tf            # EKS cluster configuration
+    │   ├── variables.tf       # EKS input variables
+    │   └── outputs.tf         # Cluster outputs (endpoint, OIDC)
+    ├── iam/                   # IAM roles and policies
+    │   ├── main.tf            # IAM roles for EKS services
+    │   ├── variables.tf       # IAM input variables
+    │   └── outputs.tf         # Role ARNs
+    ├── ecr/                   # Container registries
+    │   ├── main.tf            # ECR repositories
+    │   ├── variables.tf       # ECR configuration
+    │   └── outputs.tf         # Repository URLs
+    ├── helm/                  # Helm charts for add-ons
+    │   ├── main.tf            # ALB Controller, Metrics Server
+    │   ├── variables.tf       # Helm chart versions
+    │   └── outputs.tf         # Release status
+    └── s3-dynamodb/           # Terraform state backend
+        ├── main.tf            # S3 bucket and DynamoDB table
+        ├── variables.tf       # Backend configuration
+        └── outputs.tf         # Backend resource details
+```
+
+### Module Dependencies
+
+```mermaid
+graph TD
+    A[VPC Module] --> B[EKS Module]
+    B --> C[IAM Module]
+    B --> D[Helm Module]
+    C --> D
+    E[ECR Module] --> F[Application Deployment]
+    G[S3-DynamoDB Module] --> H[Terraform State]
+```
+
 ## 📋 Prerequisites
 
 1. **Terraform** (>= 1.0)
